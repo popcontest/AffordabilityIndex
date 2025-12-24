@@ -1,9 +1,6 @@
 {
   "name": "affordability-index",
   "private": true,
-  "workspaces": [
-    "apps/web"
-  ],
   "scripts": {
     "build": "cd apps/web && npm run build",
     "dev": "cd apps/web && npm run dev",
