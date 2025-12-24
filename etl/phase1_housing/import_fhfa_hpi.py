@@ -1,0 +1,282 @@
+#!/usr/bin/env python3
+"""
+FHFA House Price Index (HPI) ETL Script
+
+Downloads and imports FHFA HPI data to measure home price trends.
+
+Data Source: https://www.fhfa.gov/data/hpi/datasets
+File: County-level HPI (Annual, XLSX format)
+Update Frequency: Quarterly
+Coverage: ~80% of US counties
+
+HPI Baseline: Index value of 100 represents baseline year (varies by geography)
+Values > 100 = prices higher than baseline
+Values < 100 = prices lower than baseline
+
+Usage:
+    python etl/phase1_housing/import_fhfa_hpi.py [--dry-run]
+
+Database Updates:
+    - Updates affordability_snapshot.fhfaHpi field
+    - Maps county-level HPI to cities via countyFips
+"""
+
+import os
+import sys
+import argparse
+import logging
+from io import BytesIO
+
+import pandas as pd
+from psycopg2.extras import execute_values
+import requests
+
+# Add parent directory to path for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from common import db, parsers
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# FHFA Data URL
+FHFA_COUNTY_HPI_URL = "https://www.fhfa.gov/hpi/download/annual/hpi_at_county.xlsx"
+
+
+def download_fhfa_hpi():
+    """
+    Download FHFA County HPI XLSX file.
+
+    Returns:
+        BytesIO: In-memory buffer containing XLSX file
+    """
+    logger.info(f"Downloading FHFA County HPI from {FHFA_COUNTY_HPI_URL}")
+
+    try:
+        response = requests.get(FHFA_COUNTY_HPI_URL, timeout=60)
+        response.raise_for_status()
+
+        logger.info(f"Downloaded {len(response.content):,} bytes")
+        return BytesIO(response.content)
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to download FHFA HPI data: {e}")
+        raise
+
+
+def parse_fhfa_hpi(xlsx_buffer):
+    """
+    Parse FHFA County HPI XLSX file.
+
+    Args:
+        xlsx_buffer: BytesIO buffer containing XLSX file
+
+    Returns:
+        pd.DataFrame with columns: [state, county, county_fips, year, hpi_value]
+    """
+    logger.info("Parsing FHFA HPI XLSX file")
+
+    try:
+        # FHFA file structure:
+        # - First 5 rows are headers/disclaimers
+        # - Row 6 is column names
+        # - Data starts at row 7
+        # Columns: State, County, FIPS code, Year, Quarter, HPI, HPI with 1990 base, HPI with 2000 base
+
+        df = pd.read_excel(
+            xlsx_buffer,
+            sheet_name=0,
+            engine='openpyxl',
+            skiprows=5,  # Skip header rows
+            header=None,  # Don't use first row as header
+            names=['state', 'county', 'fips_code', 'year', 'quarter', 'hpi', 'hpi_1990', 'hpi_2000']
+        )
+
+        # Skip the first row (which contains column names from the file)
+        df = df.iloc[1:].reset_index(drop=True)
+
+        logger.info(f"Loaded DataFrame with shape: {df.shape}")
+        logger.info(f"First few rows:\n{df.head()}")
+
+        # Convert year to numeric and filter out invalid rows
+        df['year'] = pd.to_numeric(df['year'], errors='coerce')
+        df = df.dropna(subset=['year', 'fips_code'])
+
+        # Convert HPI to numeric
+        df['hpi'] = pd.to_numeric(df['hpi'], errors='coerce')
+        df = df.dropna(subset=['hpi'])
+
+        # Normalize FIPS codes using common parser
+        df['county_fips'] = df['fips_code'].astype(str).apply(lambda x: parsers.normalize_county_fips(x))
+
+        logger.info(f"After cleaning: {len(df):,} rows")
+        logger.info(f"Years range: {df['year'].min():.0f} - {df['year'].max():.0f}")
+        logger.info(f"Unique counties: {df['county_fips'].nunique():,}")
+
+        return df[['state', 'county', 'county_fips', 'year', 'hpi']]
+
+    except Exception as e:
+        logger.error(f"Failed to parse FHFA HPI data: {e}")
+        raise
+
+
+def get_latest_hpi_by_county(df):
+    """
+    Extract latest HPI value for each county.
+
+    Args:
+        df: FHFA HPI DataFrame with columns [state, county, county_fips, year, hpi]
+
+    Returns:
+        pd.DataFrame with columns: [county_fips, hpi_value, year]
+    """
+    logger.info("Extracting latest HPI values by county")
+
+    # Group by county and get the row with the maximum year
+    latest_hpi = df.loc[df.groupby('county_fips')['year'].idxmax()]
+
+    # Select and rename columns
+    result = latest_hpi[['county_fips', 'hpi', 'year']].copy()
+    result.columns = ['county_fips', 'hpi_value', 'year']
+
+    logger.info(f"Latest HPI data for {len(result):,} counties")
+    logger.info(f"Most recent year: {result['year'].max():.0f}")
+    logger.info(f"Sample data:\n{result.head()}")
+
+    return result
+
+
+def map_hpi_to_cities(conn, hpi_df, dry_run=False):
+    """
+    Map county-level HPI to cities and update database.
+
+    Args:
+        conn: Database connection
+        hpi_df: DataFrame with [county_fips, hpi_value, year]
+        dry_run: If True, don't commit changes
+
+    Returns:
+        dict: Statistics about the import
+    """
+    logger.info("Mapping HPI data to cities")
+
+    cursor = conn.cursor()
+
+    # Get all cities with county FIPS using common utility
+    cities = db.get_cities_with_county_fips(cursor)
+    logger.info(f"Found {len(cities):,} cities with county FIPS codes")
+
+    # Create county_fips → hpi_value mapping (already normalized in parse step)
+    hpi_map = dict(zip(hpi_df['county_fips'], hpi_df['hpi_value']))
+
+    logger.info(f"HPI data available for {len(hpi_map):,} counties")
+
+    # Prepare updates for affordability_snapshot
+    # Strategy: Update existing snapshots, create if missing
+
+    updates = []
+    cities_matched = 0
+
+    for city_id, city_name, state_abbr, county_fips in cities:
+        county_fips_str = parsers.normalize_county_fips(county_fips) if county_fips else None
+
+        if county_fips_str and county_fips_str in hpi_map:
+            hpi_value = hpi_map[county_fips_str]
+            updates.append((hpi_value, city_id))
+            cities_matched += 1
+
+    logger.info(f"Matched {cities_matched:,} cities to HPI data ({cities_matched/len(cities)*100:.1f}%)")
+
+    if dry_run:
+        logger.info("[DRY RUN] Would update affordability_snapshot for matched cities")
+        logger.info(f"[DRY RUN] Sample updates: {updates[:5]}")
+        return {
+            'total_cities': len(cities),
+            'cities_matched': cities_matched,
+            'match_rate': cities_matched / len(cities) if cities else 0,
+            'dry_run': True
+        }
+
+    # Ensure affordability snapshots exist for all cities
+    city_ids = [city_id for city_id, _, _, _ in cities]
+    created = db.ensure_snapshots_exist(cursor, 'CITY', city_ids)
+
+    # Now update fhfaHpi for all matched cities
+    logger.info(f"Updating fhfaHpi for {len(updates):,} cities")
+
+    # Update using a join pattern
+    execute_values(cursor, """
+        UPDATE affordability_snapshot AS a
+        SET "fhfaHpi" = v.hpi
+        FROM (VALUES %s) AS v(hpi, city_id)
+        WHERE a."geoType" = 'CITY'
+          AND a."geoId" = v.city_id
+    """, updates, page_size=1000)
+
+    rows_updated = cursor.rowcount
+    conn.commit()
+
+    logger.info(f"Successfully updated {rows_updated:,} affordability snapshots")
+
+    return {
+        'total_cities': len(cities),
+        'cities_matched': cities_matched,
+        'match_rate': cities_matched / len(cities) if cities else 0,
+        'rows_updated': rows_updated,
+        'dry_run': False
+    }
+
+
+def main():
+    """Main ETL execution."""
+    parser = argparse.ArgumentParser(description='Import FHFA House Price Index data')
+    parser.add_argument('--dry-run', action='store_true',
+                        help='Download and parse data without database writes')
+    args = parser.parse_args()
+
+    logger.info("=" * 70)
+    logger.info("FHFA House Price Index (HPI) ETL")
+    logger.info("=" * 70)
+
+    if args.dry_run:
+        logger.info("[DRY RUN MODE] No database changes will be made")
+
+    try:
+        # Step 1: Download FHFA HPI data
+        xlsx_buffer = download_fhfa_hpi()
+
+        # Step 2: Parse XLSX file
+        df = parse_fhfa_hpi(xlsx_buffer)
+
+        # Step 3: Extract latest HPI by county
+        hpi_df = get_latest_hpi_by_county(df)
+
+        # Step 4: Connect to database
+        conn = db.get_connection()
+
+        # Step 5: Map to cities and update database
+        stats = map_hpi_to_cities(conn, hpi_df, dry_run=args.dry_run)
+
+        # Step 6: Report results
+        logger.info("=" * 70)
+        logger.info("IMPORT COMPLETE")
+        logger.info("=" * 70)
+        logger.info(f"Total cities: {stats['total_cities']:,}")
+        logger.info(f"Cities matched: {stats['cities_matched']:,}")
+        logger.info(f"Match rate: {stats['match_rate']*100:.1f}%")
+        if not args.dry_run:
+            logger.info(f"Rows updated: {stats['rows_updated']:,}")
+
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"ETL failed: {e}", exc_info=True)
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,65 @@
+# Environment variables
+.env
+.env.local
+.env.production
+.env*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Next.js
+.next/
+out/
+dist/
+*.tsbuildinfo
+next-env.d.ts
+
+# Prisma
+apps/web/prisma/migrations/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data files (exclude downloaded datasets)
+*.csv
+*.xlsx
+*.zip
+!etl/.gitkeep
+
+# Docker
+docker-compose.override.yml
+
+# Claude settings (may contain API keys)
+.claude/settings.local.json
+
+# Development scripts (may contain API keys)
+apps/web/scripts/
+
+# Windows null file
+nul

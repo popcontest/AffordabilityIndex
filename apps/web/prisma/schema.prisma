@@ -1,0 +1,410 @@
+// Affordability Index Schema
+// Tracks geographic entities and affordability metrics
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Census Place (city/town)
+model GeoPlace {
+  placeGeoid String  @id @db.VarChar(7) // SSFPPP format
+  name       String  @db.VarChar(255)
+  stateFips  String  @db.VarChar(2)
+  stateAbbr  String  @db.VarChar(2)
+  countyFips String? @db.VarChar(3)
+
+  @@index([stateAbbr, name])
+  @@map("geo_place")
+}
+
+// ZCTA (ZIP Code Tabulation Area)
+model GeoZcta {
+  zcta       String  @id @db.VarChar(5)
+  stateAbbr  String? @db.VarChar(2)
+  city       String? @db.VarChar(255)
+  metro      String? @db.VarChar(255)
+  countyName String? @db.VarChar(255)
+  population Int?
+  latitude   Float? // For distance calculations
+  longitude  Float? // For distance calculations
+
+  @@index([stateAbbr])
+  @@map("geo_zcta")
+}
+
+// Zillow City (distinct from Census Place)
+model GeoCity {
+  cityId     String  @id @db.VarChar(16) // Zillow RegionID
+  name       String  @db.VarChar(255)
+  stateAbbr  String  @db.VarChar(2)
+  stateName  String? @db.VarChar(255)
+  countyName String? @db.VarChar(255)
+  countyFips String? @db.VarChar(5) // 5-digit county FIPS for v2 basket mapping
+  metro      String? @db.VarChar(255)
+  slug       String  @db.VarChar(255) // slugified name (no state suffix)
+  population Int? // Population (optional)
+
+  @@index([stateAbbr, slug])
+  @@index([stateAbbr, name])
+  @@index([countyFips])
+  @@map("geo_city")
+}
+
+// Time-series snapshots of affordability metrics
+// Note: geoId references GeoPlace.placeGeoid, GeoCity.cityId, or GeoZcta.zcta depending on geoType
+// We handle joins manually in queries rather than via Prisma relations
+model MetricSnapshot {
+  id        String   @id @default(cuid())
+  geoType   GeoType
+  geoId     String   @db.VarChar(16) // placeGeoid, cityId, or zcta
+  asOfDate  DateTime @db.Date
+  homeValue Float? // Zillow ZHVI (nullable if unavailable)
+  income    Float? // ACS median household income (nullable if unavailable)
+  ratio     Float? // homeValue / income (nullable if either input is null)
+  sources   String?  @db.Text // JSON string with metadata
+  createdAt DateTime @default(now())
+
+  @@unique([geoType, geoId, asOfDate])
+  @@index([geoType, geoId])
+  @@index([asOfDate])
+  @@map("metric_snapshot")
+}
+
+enum GeoType {
+  PLACE
+  CITY
+  ZCTA
+}
+
+// Property tax rates by location
+model PropertyTaxRate {
+  id            String   @id @default(cuid())
+  geoType       GeoType
+  geoId         String   @db.VarChar(16)
+  effectiveRate Float // Median effective rate (%)
+  rate25th      Float? // 25th percentile
+  rate75th      Float? // 75th percentile
+  asOfYear      Int // Tax year (2024, 2025, etc.)
+  source        String?  @db.VarChar(255)
+  updatedAt     DateTime @updatedAt
+
+  @@unique([geoType, geoId, asOfYear])
+  @@index([geoType, geoId])
+  @@map("property_tax_rate")
+}
+
+// State/local income tax data
+model IncomeTaxRate {
+  id                  String   @id @default(cuid())
+  stateAbbr           String   @db.VarChar(2)
+  localJurisdiction   String?  @db.VarChar(255) // City name if local tax exists
+  hasTax              Boolean  @default(true)
+  // Simplified: store effective rates by income bracket
+  effectiveRateAt50k  Float // Effective rate at $50k income
+  effectiveRateAt75k  Float // At $75k
+  effectiveRateAt100k Float // At $100k
+  effectiveRateAt150k Float // At $150k
+  effectiveRateAt200k Float // At $200k
+  taxYear             Int // 2025, 2026, etc.
+  source              String?  @db.VarChar(255)
+  updatedAt           DateTime @updatedAt
+
+  @@unique([stateAbbr, localJurisdiction, taxYear])
+  @@index([stateAbbr])
+  @@map("income_tax_rate")
+}
+
+// Transportation costs by metro area
+model TransportationCost {
+  id                String   @id @default(cuid())
+  metroArea         String   @db.VarChar(255) // MSA name or state if not metro-specific
+  stateAbbr         String   @db.VarChar(2)
+  // Car ownership costs
+  annualCarCost     Float // BLS average (gas, insurance, maintenance, depreciation)
+  carOwnershipRate  Float // % households with cars (0-1)
+  // Transit costs
+  annualTransitPass Float? // Annual cost of transit pass
+  transitModeShare  Float // % using transit for commute (0-1)
+  // Computed hybrid cost
+  estimatedAvgCost  Float // Weighted average based on mode share
+  asOfYear          Int
+  source            String?  @db.VarChar(255)
+  updatedAt         DateTime @updatedAt
+
+  @@unique([metroArea, asOfYear])
+  @@index([stateAbbr])
+  @@map("transportation_cost")
+}
+
+// Childcare costs by county/state
+model ChildcareCost {
+  id            String   @id @default(cuid())
+  geoLevel      String   @db.VarChar(20) // "county" or "state"
+  geoId         String   @db.VarChar(50) // County FIPS or state abbr
+  stateFips     String   @db.VarChar(2)
+  // Costs by age group (annual)
+  infantCost    Float? // 0-1 years
+  toddlerCost   Float? // 1-3 years
+  preschoolCost Float? // 3-5 years
+  schoolAgeCost Float? // 5-12 years
+  // Averages
+  avgAnnualCost Float // Weighted average
+  asOfYear      Int
+  source        String?  @db.VarChar(255)
+  updatedAt     DateTime @updatedAt
+
+  @@unique([geoLevel, geoId, asOfYear])
+  @@index([stateFips])
+  @@map("childcare_cost")
+}
+
+// Healthcare costs by state/region
+model HealthcareCost {
+  id                String   @id @default(cuid())
+  stateAbbr         String   @db.VarChar(2)
+  region            String?  @db.VarChar(50) // Optional sub-state region
+  // Premium costs (annual)
+  individualPremium Float // Average individual premium
+  familyPremium     Float // Average family premium
+  // Additional metrics
+  avgDeductible     Float?
+  avgOutOfPocket    Float?
+  costOfCareIndex   Float? // Regional cost-of-care multiplier (1.0 = national avg)
+  asOfYear          Int
+  source            String?  @db.VarChar(255)
+  updatedAt         DateTime @updatedAt
+
+  @@unique([stateAbbr, region, asOfYear])
+  @@index([stateAbbr])
+  @@map("healthcare_cost")
+}
+
+// Comprehensive affordability snapshot (enhanced version of MetricSnapshot)
+model AffordabilitySnapshot {
+  id       String   @id @default(cuid())
+  geoType  GeoType
+  geoId    String   @db.VarChar(16)
+  asOfDate DateTime @db.Date
+
+  // Original metrics
+  homeValue    Float?
+  medianIncome Float?
+  simpleRatio  Float? // homeValue / income (legacy)
+
+  // PHASE 1: Enhanced Housing Metrics
+  hudFmr1Br       Float? // HUD Fair Market Rent - 1 bedroom (monthly)
+  hudFmr2Br       Float? // HUD Fair Market Rent - 2 bedroom (monthly)
+  hudFmr3Br       Float? // HUD Fair Market Rent - 3 bedroom (monthly)
+  fhfaHpi         Float? // FHFA House Price Index (baseline year = 100)
+  propertyTaxRate Float? // Effective property tax rate (decimal, e.g., 0.012 = 1.2%)
+
+  // New: Cost breakdowns (annual amounts)
+  propertyTaxCost    Float? // Estimated annual property tax
+  incomeTaxCost      Float? // Estimated state/local income tax
+  transportationCost Float? // Estimated transportation cost
+  childcareCost      Float? // Estimated childcare (if applicable)
+  healthcareCost     Float? // Estimated healthcare premium
+
+  // New: Calculated affordability scores
+  netDisposableIncome    Float? // After all taxes/fixed costs
+  annualHousingCost      Float? // Mortgage + prop tax + insurance
+  trueAffordabilityScore Float? // netDisposableIncome / annualHousingCost
+
+  // Persona-specific scores (JSON)
+  personaScores String? @db.Text // JSON: {single: 1.8, family: 1.2, retiree: 2.1, ...}
+
+  // Metadata
+  assumptions String?  @db.Text // JSON: {downPayment: 0.2, mortgageRate: 0.07, ...}
+  sources     String?  @db.Text
+  createdAt   DateTime @default(now())
+
+  @@unique([geoType, geoId, asOfDate])
+  @@index([geoType, geoId])
+  @@index([asOfDate])
+  @@index([trueAffordabilityScore])
+  @@map("affordability_snapshot")
+}
+
+// User-customized calculations (for calculator tool)
+model UserCalculation {
+  id        String  @id @default(cuid())
+  sessionId String? @db.VarChar(255) // For anonymous users
+
+  // Location
+  geoType GeoType
+  geoId   String  @db.VarChar(16)
+
+  // User inputs
+  annualIncome   Float
+  downPaymentPct Float   @default(0.2)
+  householdType  String  @db.VarChar(50) // "single", "couple", "family", etc.
+  numChildren    Int     @default(0)
+  needsCar       Boolean @default(true)
+  mortgageRate   Float? // Override current rate
+
+  // Calculated results
+  maxAffordableHome Float?
+  estimatedMonthly  Float?
+  trueAffordability Float?
+  netDisposable     Float?
+
+  createdAt DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([geoType, geoId])
+  @@map("user_calculation")
+}
+
+// County-level cost basket (v2 MVP for essentials scoring)
+model CostBasket {
+  id            String @id @default(cuid())
+  countyFips    String @db.VarChar(5) // 5-digit county FIPS (primary geo key for MVP)
+  stateFips     String @db.VarChar(2)
+  stateAbbr     String @db.VarChar(2)
+  countyName    String @db.VarChar(255)
+  source        String @db.VarChar(100) // "basket_stub", "mit_living_wage", etc.
+  version       String @db.VarChar(20) // "2025-01", etc.
+  householdType String @db.VarChar(50) // "1_adult_0_kids", "2_adults_2_kids", etc.
+
+  // Annual cost components (nullable for flexibility)
+  food           Float?
+  healthcare     Float?
+  transportation Float?
+  taxes          Float?
+  other          Float?
+  housing        Float? // Optional housing component if basket includes it
+
+  // Total annual essentials cost (required)
+  totalAnnual Float
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([countyFips, source, version, householdType])
+  @@index([countyFips])
+  @@index([stateAbbr])
+  @@map("cost_basket")
+}
+
+// Regional Price Parities (BEA data)
+model RegionalPriceParity {
+  id      String @id @default(cuid())
+  geoType String @db.VarChar(20) // "state", "metro", "county"
+  geoId   String @db.VarChar(50) // State abbr, MSA code, or county FIPS
+  geoName String @db.VarChar(255)
+
+  // RPP metrics (100 = national average)
+  allItemsRpp Float // Overall RPP
+  goodsRpp    Float? // Goods component
+  servicesRpp Float? // Services component
+  rentRpp     Float? // Rents component
+
+  asOfYear  Int
+  source    String   @default("BEA") @db.VarChar(100)
+  updatedAt DateTime @updatedAt
+
+  @@unique([geoType, geoId, asOfYear])
+  @@index([geoType, geoId])
+  @@map("regional_price_parity")
+}
+
+// Multi-dimensional affordability scores
+model CostDimension {
+  id           String   @id @default(cuid())
+  geoType      GeoType
+  geoId        String   @db.VarChar(16)
+  snapshotDate DateTime @db.Date
+
+  // Dimension 1: Housing (35% weight)
+  medianHomeValue        Float?
+  medianGrossRent        Float?
+  propertyTaxRate        Decimal? @db.Decimal(5, 4)
+  monthlyHousingCostOwn  Decimal? @db.Decimal(10, 2)
+  monthlyHousingCostRent Decimal? @db.Decimal(10, 2)
+  housingBurdenRatioOwn  Decimal? @db.Decimal(5, 3)
+  housingBurdenRatioRent Decimal? @db.Decimal(5, 3)
+  housingScoreOwn        Decimal? @db.Decimal(5, 2)
+  housingScoreRent       Decimal? @db.Decimal(5, 2)
+
+  // Dimension 2: Taxes (20% weight)
+  stateIncomeTaxRate Decimal? @db.Decimal(5, 3)
+  localIncomeTaxRate Decimal? @db.Decimal(5, 3)
+  salesTaxRate       Decimal? @db.Decimal(5, 3)
+  annualTaxBurden    Decimal? @db.Decimal(10, 2)
+  taxBurdenRatio     Decimal? @db.Decimal(5, 3)
+  taxScore           Decimal? @db.Decimal(5, 2)
+
+  // Dimension 3: Healthcare (15% weight)
+  medicareSpendingPerCapita Decimal? @db.Decimal(10, 2)
+  healthcareCostIndex       Decimal? @db.Decimal(5, 3)
+  uninsuredRate             Decimal? @db.Decimal(5, 3)
+  healthcareScore           Decimal? @db.Decimal(5, 2)
+
+  // Dimension 4: Transportation (12% weight)
+  meanCommuteMinutes   Decimal? @db.Decimal(5, 1)
+  pctPublicTransit     Decimal? @db.Decimal(5, 2)
+  pctDriveAlone        Decimal? @db.Decimal(5, 2)
+  vehiclesPerHousehold Decimal? @db.Decimal(4, 2)
+  regionalGasPrice     Decimal? @db.Decimal(5, 3)
+  annualTransportCost  Decimal? @db.Decimal(10, 2)
+  transportCostRatio   Decimal? @db.Decimal(5, 3)
+  transportScore       Decimal? @db.Decimal(5, 2)
+
+  // Dimension 5: Cost of Living (10% weight)
+  regionalPriceParity Decimal? @db.Decimal(6, 2)
+  colScore            Decimal? @db.Decimal(5, 2)
+
+  // Dimension 6: Childcare (5% weight)
+  annualChildcareCost Decimal? @db.Decimal(10, 2)
+  childcareRatio      Decimal? @db.Decimal(5, 3)
+  childcareScore      Decimal? @db.Decimal(5, 2)
+
+  // Dimension 7: Utilities (2% weight)
+  avgElectricityRate Decimal? @db.Decimal(6, 4)
+  avgGasRate         Decimal? @db.Decimal(6, 4)
+  annualUtilityCost  Decimal? @db.Decimal(10, 2)
+  utilityRatio       Decimal? @db.Decimal(5, 3)
+  utilityScore       Decimal? @db.Decimal(5, 2)
+
+  // Dimension 8: Food (1% weight)
+  foodCostIndex Decimal? @db.Decimal(5, 3)
+  foodScore     Decimal? @db.Decimal(5, 2)
+
+  // Composite scores
+  compositeScore         Decimal? @db.Decimal(5, 2)
+  compositeScoreWeighted Decimal? @db.Decimal(5, 2)
+
+  // Metadata
+  medianIncome    Float? // For calculations
+  dataQualityFlag String?  @db.VarChar(50) // "complete", "partial", "estimated"
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([geoType, geoId, snapshotDate])
+  @@index([geoType, geoId, snapshotDate(sort: Desc)])
+  @@index([compositeScoreWeighted(sort: Desc)])
+  @@map("cost_dimension")
+}
+
+// Data source metadata tracking
+model DataSourceMetadata {
+  id                 String    @id @default(cuid())
+  sourceName         String    @db.VarChar(100) // "zillow_zhvi", "census_acs", "bea_rpp", etc.
+  dimension          String    @db.VarChar(50) // "housing", "taxes", "healthcare", etc.
+  lastUpdated        DateTime  @db.Date
+  dataVintage        String?   @db.VarChar(50) // e.g., "2023", "2022-2023 ACS 5-Year"
+  nextUpdateExpected DateTime? @db.Date
+  updateFrequency    String?   @db.VarChar(50) // "monthly", "annual", "quarterly"
+  apiEndpoint        String?   @db.Text
+  notes              String?   @db.Text
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@unique([sourceName, dimension])
+  @@index([dimension])
+  @@map("data_source_metadata")
+}

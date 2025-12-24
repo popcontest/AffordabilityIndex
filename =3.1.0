@@ -1,0 +1,2 @@
+Requirement already satisfied: openpyxl in c:\users\michael hussey\appdata\local\packages\pythonsoftwarefoundation.python.3.11_qbz5n2kfra8p0\localcache\local-packages\python311\site-packages (3.1.5)
+Requirement already satisfied: et-xmlfile in c:\users\michael hussey\appdata\local\packages\pythonsoftwarefoundation.python.3.11_qbz5n2kfra8p0\localcache\local-packages\python311\site-packages (from openpyxl) (2.0.0)

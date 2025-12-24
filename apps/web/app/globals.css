@@ -1,0 +1,265 @@
+@import "tailwindcss";
+
+/**
+ * AffordabilityIndex Design Tokens
+ * Inspired by Behance 2025 Trends: Sunkissed Sierra, Flower Power, Designed to Move
+ */
+
+:root {
+  /* Base colors */
+  --background: #ffffff;
+  --foreground: #171717;
+
+  /* AI Brand Tokens - Backgrounds & Surfaces */
+  --ai-bg: #fafaf9;           /* Stone-50: soft neutral background */
+  --ai-surface: #ffffff;       /* Pure white cards/surfaces */
+  --ai-surface-elevated: #ffffff;
+  --ai-border: #e7e5e4;        /* Stone-200: subtle borders */
+  --ai-border-muted: #f5f5f4;  /* Stone-100: very subtle dividers */
+
+  /* Text hierarchy - Enhanced contrast */
+  --ai-text: #0a0a0a;          /* Near-black: stronger contrast */
+  --ai-text-secondary: #262626; /* Neutral-800: headings */
+  --ai-text-muted: #525252;    /* Neutral-600: better contrast than Stone-500 */
+  --ai-text-subtle: #737373;   /* Neutral-500: tertiary text */
+
+  /* Sunkissed Sierra - warm earthy orange accent */
+  --ai-warm: #ea580c;          /* Orange-600: primary warm accent */
+  --ai-warm-hover: #c2410c;    /* Orange-700: hover state */
+  --ai-warm-light: #fed7aa;    /* Orange-200: light backgrounds */
+  --ai-warm-subtle: #ffedd5;   /* Orange-100: very subtle highlights */
+
+  /* Primary brand color (keeping existing blue) */
+  --ai-primary: #2563eb;       /* Blue-600 */
+  --ai-primary-hover: #1d4ed8; /* Blue-700 */
+  --ai-primary-light: #dbeafe; /* Blue-100 */
+  --ai-primary-contrast: #ffffff;
+
+  /* Semantic colors */
+  --ai-positive: #16a34a;      /* Green-600: affordable/good */
+  --ai-positive-light: #dcfce7; /* Green-100 */
+  --ai-caution: #ca8a04;       /* Yellow-600: moderate */
+  --ai-caution-light: #fef9c3; /* Yellow-100 */
+  --ai-negative: #dc2626;      /* Red-600: expensive/bad */
+  --ai-negative-light: #fee2e2; /* Red-100 */
+
+  /* Radius tokens */
+  --ai-radius-sm: 0.375rem;    /* 6px - small elements */
+  --ai-radius-md: 0.5rem;      /* 8px - buttons, badges */
+  --ai-radius-card: 0.75rem;   /* 12px - cards */
+  --ai-radius-lg: 1rem;        /* 16px - large containers */
+
+  /* Shadow tokens (subtle, modern) */
+  --ai-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --ai-shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.08), 0 1px 2px -1px rgb(0 0 0 / 0.08);
+  --ai-shadow-card-hover: 0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.08);
+  --ai-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.08);
+
+  /* Spacing scale (consistent vertical rhythm) */
+  --ai-space-section: 6rem;    /* 96px - between major sections */
+  --ai-space-section-sm: 4rem; /* 64px - smaller section gaps */
+  --ai-space-stack-lg: 2rem;   /* 32px - large vertical stack */
+  --ai-space-stack: 1.5rem;    /* 24px - default vertical stack */
+  --ai-space-stack-sm: 1rem;   /* 16px - tight vertical stack */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+
+    /* Dark mode overrides */
+    --ai-bg: #171717;            /* Stone-900 */
+    --ai-surface: #1c1917;       /* Stone-900 */
+    --ai-surface-elevated: #292524; /* Stone-800 */
+    --ai-border: #44403c;        /* Stone-700 */
+    --ai-border-muted: #292524;  /* Stone-800 */
+
+    --ai-text: #fafaf9;          /* Stone-50 */
+    --ai-text-muted: #a8a29e;    /* Stone-400 */
+    --ai-text-subtle: #78716c;   /* Stone-500 */
+
+    /* Warm accent - slightly desaturated for dark mode */
+    --ai-warm: #fb923c;          /* Orange-400 */
+    --ai-warm-hover: #f97316;    /* Orange-500 */
+    --ai-warm-light: #7c2d12;    /* Orange-900 */
+    --ai-warm-subtle: #431407;   /* Orange-950 */
+
+    /* Adjusted shadows for dark mode (more pronounced) */
+    --ai-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+    --ai-shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.4), 0 1px 2px -1px rgb(0 0 0 / 0.4);
+    --ai-shadow-card-hover: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.4);
+    --ai-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.4);
+  }
+}
+
+@theme inline {
+  /* Base theme variables */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  /* AI Color tokens mapped to Tailwind */
+  --color-ai-bg: var(--ai-bg);
+  --color-ai-surface: var(--ai-surface);
+  --color-ai-surface-elevated: var(--ai-surface-elevated);
+  --color-ai-border: var(--ai-border);
+  --color-ai-border-muted: var(--ai-border-muted);
+
+  --color-ai-text: var(--ai-text);
+  --color-ai-text-muted: var(--ai-text-muted);
+  --color-ai-text-subtle: var(--ai-text-subtle);
+
+  --color-ai-warm: var(--ai-warm);
+  --color-ai-warm-hover: var(--ai-warm-hover);
+  --color-ai-warm-light: var(--ai-warm-light);
+  --color-ai-warm-subtle: var(--ai-warm-subtle);
+
+  --color-ai-primary: var(--ai-primary);
+  --color-ai-primary-hover: var(--ai-primary-hover);
+  --color-ai-primary-light: var(--ai-primary-light);
+  --color-ai-primary-contrast: var(--ai-primary-contrast);
+
+  --color-ai-positive: var(--ai-positive);
+  --color-ai-positive-light: var(--ai-positive-light);
+  --color-ai-caution: var(--ai-caution);
+  --color-ai-caution-light: var(--ai-caution-light);
+  --color-ai-negative: var(--ai-negative);
+  --color-ai-negative-light: var(--ai-negative-light);
+
+  /* Radius tokens */
+  --radius-sm: var(--ai-radius-sm);
+  --radius-md: var(--ai-radius-md);
+  --radius-card: var(--ai-radius-card);
+  --radius-lg: var(--ai-radius-lg);
+
+  /* Shadow tokens */
+  --shadow-sm: var(--ai-shadow-sm);
+  --shadow-card: var(--ai-shadow-card);
+  --shadow-card-hover: var(--ai-shadow-card-hover);
+  --shadow-lg: var(--ai-shadow-lg);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Smooth Animations & Transitions */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.6s ease-out;
+}
+
+.animate-slide-in-left {
+  animation: slide-in-left 0.5s ease-out;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.5s ease-out;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.4s ease-out;
+}
+
+/* Smooth transitions for all interactive elements */
+a, button {
+  transition: all 0.2s ease-in-out;
+}
+
+/* Hover effects */
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+}
+
+/* Loading skeleton */
+@keyframes skeleton-loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    #f0f0f0 25%,
+    #e0e0e0 50%,
+    #f0f0f0 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+/* Smooth scroll */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Shimmer animation for bars and cards */
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+}
