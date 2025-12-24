@@ -1,12 +1,47 @@
 {
-  "name": "affordability-index",
+  "name": "web",
+  "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "cd apps/web && npm run build",
-    "dev": "cd apps/web && npm run dev",
-    "start": "cd apps/web && npm run start"
+    "dev": "next dev",
+    "build": "next build --webpack",
+    "start": "next start",
+    "lint": "eslint",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "audit:visual": "node scripts/visual-audit.mjs",
+    "audit:visual:enhanced": "node scripts/visual-audit-enhanced.mjs",
+    "plan-mode": "node scripts/plan-mode-orchestrator.mjs",
+    "plan-mode:auto": "node scripts/plan-mode-auto.mjs",
+    "plan-mode:manual": "node scripts/plan-mode-manual-enhanced.mjs",
+    "plan-mode:multi-agent": "node scripts/plan-mode-multi-agent.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.2",
+    "@google/generative-ai": "^0.24.1",
+    "@prisma/adapter-pg": "^7.1.0",
+    "@prisma/client": "^7.1.0",
+    "framer-motion": "^12.23.26",
+    "next": "16.0.10",
+    "openai": "^6.15.0",
+    "pg": "^8.16.3",
+    "prisma": "^7.1.0",
+    "react": "19.2.1",
+    "react-dom": "19.2.1",
+    "recharts": "^3.6.0"
   },
   "devDependencies": {
-    "next": "16.0.10"
+    "@playwright/test": "^1.57.0",
+    "@types/node": "^20",
+    "@types/pg": "^8.16.0",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "autoprefixer": "^10.4.23",
+    "babel-plugin-react-compiler": "1.0.0",
+    "eslint": "^9",
+    "eslint-config-next": "16.0.10",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.19",
+    "typescript": "^5"
   }
 }

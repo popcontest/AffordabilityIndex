@@ -33,7 +33,8 @@ dist/
 next-env.d.ts
 
 # Prisma
-apps/web/prisma/migrations/
+prisma/migrations/
+/app/generated/prisma
 
 # IDEs
 .vscode/
@@ -59,7 +60,19 @@ docker-compose.override.yml
 .claude/settings.local.json
 
 # Development scripts (may contain API keys)
-apps/web/scripts/
+scripts/
+
+# Vercel
+.vercel
+
+# Testing
+/coverage
+
+# Audit results
+/audit-results
 
 # Windows null file
 nul
+
+# Old monorepo directory (migrated to root)
+apps/
