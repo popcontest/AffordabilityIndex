@@ -4,8 +4,5 @@
   "framework": "nextjs",
   "installCommand": "npm install",
   "devCommand": "cd apps/web && npm run dev",
-  "regions": ["iad1"],
-  "env": {
-    "DATABASE_URL": "@database_url"
-  }
+  "regions": ["iad1"]
 }
