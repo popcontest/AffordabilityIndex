@@ -1,5 +1,7 @@
 {
+  "framework": "nextjs",
   "buildCommand": "sh -c 'cd apps/web && npm run build'",
   "outputDirectory": "apps/web/.next",
-  "installCommand": "sh -c 'cd apps/web && npm install'"
+  "installCommand": "sh -c 'cd apps/web && npm install'",
+  "devCommand": "sh -c 'cd apps/web && npm run dev'"
 }
