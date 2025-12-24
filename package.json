@@ -8,5 +8,8 @@
     "build": "cd apps/web && npm run build",
     "dev": "cd apps/web && npm run dev",
     "start": "cd apps/web && npm run start"
+  },
+  "devDependencies": {
+    "next": "16.0.10"
   }
 }
