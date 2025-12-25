@@ -225,6 +225,19 @@ function renderCityDashboard(
 
         {hasMetrics && (
           <>
+            {/* True Affordability Section - V2 Feature */}
+            <div className="mb-12">
+              <h2 className="text-2xl font-bold text-gray-900 mb-4">True Affordability by Household Type</h2>
+              <p className="text-gray-600 mb-6">
+                See the full cost of living in {city.name} for different household profiles, including taxes, transportation, childcare, and healthcare.
+              </p>
+              <TrueAffordabilitySection
+                geoType="CITY"
+                geoId={city.cityId}
+                cityName={city.name}
+              />
+            </div>
+
             {/* Fit Signals - Quick at-a-glance context */}
             <div className="mb-12">
               <FitSignals
@@ -277,19 +290,6 @@ function renderCityDashboard(
                 />
               </div>
             )}
-
-            {/* True Affordability Section - V2 Feature */}
-            <div className="mb-12">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">True Affordability by Household Type</h2>
-              <p className="text-gray-600 mb-6">
-                See the full cost of living in {city.name} for different household profiles, including taxes, transportation, childcare, and healthcare.
-              </p>
-              <TrueAffordabilitySection
-                geoType="CITY"
-                geoId={city.cityId}
-                cityName={city.name}
-              />
-            </div>
 
             {/* Detailed KPI Grid */}
             <div className="mb-16">
