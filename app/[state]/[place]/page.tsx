@@ -26,6 +26,7 @@ import { FitSignals } from '@/components/FitSignals';
 import { ScoreHero } from '@/components/ScoreHero';
 import { ScoreBreakdownPanel } from '@/components/ScoreBreakdownPanel';
 import { TrueAffordabilitySection } from '@/components/TrueAffordabilitySection';
+import { StaticCityMap } from '@/components/StaticCityMap';
 import {
   formatCurrency,
   formatRatio,
@@ -196,9 +197,23 @@ function renderCityDashboard(
         </div>
       </nav>
 
-      {/* Score Hero */}
+      {/* Map + Score Hero - Side by Side */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <ScoreHero score={dashboardData.score} locationName={`${city.name}, ${state.abbr}`} />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Map - Left Side */}
+          <div className="order-2 lg:order-1">
+            <StaticCityMap
+              cityName={city.name}
+              stateAbbr={state.abbr}
+              className="h-full min-h-[300px] lg:min-h-[400px]"
+            />
+          </div>
+
+          {/* Score Hero - Right Side */}
+          <div className="order-1 lg:order-2">
+            <ScoreHero score={dashboardData.score} locationName={`${city.name}, ${state.abbr}`} />
+          </div>
+        </div>
       </div>
 
       <DashboardShell
