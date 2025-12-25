@@ -14,7 +14,8 @@
     "plan-mode": "node scripts/plan-mode-orchestrator.mjs",
     "plan-mode:auto": "node scripts/plan-mode-auto.mjs",
     "plan-mode:manual": "node scripts/plan-mode-manual-enhanced.mjs",
-    "plan-mode:multi-agent": "node scripts/plan-mode-multi-agent.mjs"
+    "plan-mode:multi-agent": "node scripts/plan-mode-multi-agent.mjs",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
