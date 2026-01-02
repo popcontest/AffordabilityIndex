@@ -12,70 +12,79 @@ interface StaticCityMapProps {
 }
 
 export async function StaticCityMap({ cityName, stateAbbr, className = '' }: StaticCityMapProps) {
-  const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-
-  // If no token, show placeholder
-  if (!mapboxToken || mapboxToken.includes('your_token_here')) {
-    return <MapPlaceholder cityName={cityName} stateAbbr={stateAbbr} className={className} />;
-  }
-
-  // Step 1: Geocode using Mapbox Geocoding API
-  const query = encodeURIComponent(`${cityName}, ${stateAbbr}, USA`);
-  const geocodingUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${query}.json?access_token=${mapboxToken}&limit=1&types=place`;
-
-  let lon: number;
-  let lat: number;
-
+  // Wrap entire component in try-catch to prevent page crashes
   try {
-    const geocodingResponse = await fetch(geocodingUrl, {
-      next: { revalidate: 2592000 }, // Cache for 30 days
-    });
+    const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
-    if (!geocodingResponse.ok) {
-      throw new Error(`Mapbox geocoding failed: ${geocodingResponse.status}`);
+    // If no token, show placeholder
+    if (!mapboxToken || mapboxToken.includes('your_token_here')) {
+      return <MapPlaceholder cityName={cityName} stateAbbr={stateAbbr} className={className} />;
     }
 
-    const geocodingData = await geocodingResponse.json();
+    // Step 1: Geocode using Mapbox Geocoding API
+    const query = encodeURIComponent(`${cityName}, ${stateAbbr}, USA`);
+    const geocodingUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${query}.json?access_token=${mapboxToken}&limit=1&types=place`;
 
-    if (!geocodingData.features || geocodingData.features.length === 0) {
-      throw new Error('No geocoding results from Mapbox');
+    let lon: number;
+    let lat: number;
+
+    try {
+      const geocodingResponse = await fetch(geocodingUrl, {
+        next: { revalidate: 2592000 }, // Cache for 30 days
+      });
+
+      if (!geocodingResponse.ok) {
+        console.warn(`Mapbox geocoding failed for ${cityName}, ${stateAbbr}: ${geocodingResponse.status}`);
+        return <MapPlaceholder cityName={cityName} stateAbbr={stateAbbr} className={className} />;
+      }
+
+      const geocodingData = await geocodingResponse.json();
+
+      if (!geocodingData.features || geocodingData.features.length === 0) {
+        console.warn(`No geocoding results for ${cityName}, ${stateAbbr}`);
+        return <MapPlaceholder cityName={cityName} stateAbbr={stateAbbr} className={className} />;
+      }
+
+      [lon, lat] = geocodingData.features[0].center;
+    } catch (error) {
+      console.warn('Geocoding error for', cityName, stateAbbr, ':', error);
+      return <MapPlaceholder cityName={cityName} stateAbbr={stateAbbr} className={className} />;
     }
 
-    [lon, lat] = geocodingData.features[0].center;
+    // Step 2: Construct Mapbox Static Images API URL with coordinates
+    // Format: /styles/v1/{username}/{style_id}/static/{overlay}/{lon},{lat},{zoom}/{width}x{height}{@2x}
+
+    const markerOverlay = `pin-l+4f46e5(${lon},${lat})`; // Large pin, brand purple color
+    const style = 'mapbox/streets-v12'; // Modern, detailed street style
+    const width = 600;
+    const height = 400;
+    const retina = '@2x';
+    const zoom = 12; // Zoom in closer to the city
+
+    const mapUrl = `https://api.mapbox.com/styles/v1/${style}/static/${markerOverlay}/${lon},${lat},${zoom}/${width}x${height}${retina}?access_token=${mapboxToken}&attribution=false&logo=false`;
+
+    return (
+      <div className={`relative rounded-xl overflow-hidden shadow-md border border-gray-200 ${className}`}>
+        <img
+          src={mapUrl}
+          alt={`Map of ${cityName}, ${stateAbbr}`}
+          className="w-full h-full object-cover"
+          width={width}
+          height={height}
+          loading="lazy"
+        />
+
+        {/* Attribution overlay (required by Mapbox ToS) */}
+        <div className="absolute bottom-0 right-0 bg-white/95 backdrop-blur-sm px-2 py-1 text-xs text-gray-600 rounded-tl-md">
+          © <a href="https://www.mapbox.com/about/maps/" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-600">Mapbox</a> © <a href="http://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-600">OpenStreetMap</a>
+        </div>
+      </div>
+    );
   } catch (error) {
-    console.error('Geocoding error for', cityName, stateAbbr, ':', error);
+    // Catch any unexpected errors to prevent page crashes
+    console.error('Unexpected error in StaticCityMap:', error);
     return <MapPlaceholder cityName={cityName} stateAbbr={stateAbbr} className={className} />;
   }
-
-  // Step 2: Construct Mapbox Static Images API URL with coordinates
-  // Format: /styles/v1/{username}/{style_id}/static/{overlay}/{lon},{lat},{zoom}/{width}x{height}{@2x}
-
-  const markerOverlay = `pin-l+4f46e5(${lon},${lat})`; // Large pin, brand purple color
-  const style = 'mapbox/streets-v12'; // Modern, detailed street style
-  const width = 600;
-  const height = 400;
-  const retina = '@2x';
-  const zoom = 12; // Zoom in closer to the city
-
-  const mapUrl = `https://api.mapbox.com/styles/v1/${style}/static/${markerOverlay}/${lon},${lat},${zoom}/${width}x${height}${retina}?access_token=${mapboxToken}&attribution=false&logo=false`;
-
-  return (
-    <div className={`relative rounded-xl overflow-hidden shadow-md border border-gray-200 ${className}`}>
-      <img
-        src={mapUrl}
-        alt={`Map of ${cityName}, ${stateAbbr}`}
-        className="w-full h-full object-cover"
-        width={width}
-        height={height}
-        loading="lazy"
-      />
-
-      {/* Attribution overlay (required by Mapbox ToS) */}
-      <div className="absolute bottom-0 right-0 bg-white/95 backdrop-blur-sm px-2 py-1 text-xs text-gray-600 rounded-tl-md">
-        © <a href="https://www.mapbox.com/about/maps/" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-600">Mapbox</a> © <a href="http://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-600">OpenStreetMap</a>
-      </div>
-    </div>
-  );
 }
 
 function MapPlaceholder({ cityName, stateAbbr, className }: StaticCityMapProps) {
