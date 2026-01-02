@@ -59,7 +59,13 @@ export async function generateMetadata(props: PlacePageProps): Promise<Metadata>
     };
   }
 
-  const dashboardData = await getCityDashboardData(params.state, params.place);
+  let dashboardData;
+  try {
+    dashboardData = await getCityDashboardData(params.state, params.place);
+  } catch (error) {
+    console.error('[generateMetadata] Error loading dashboard data:', error);
+    return { title: 'City Not Found' };
+  }
 
   // Disambiguation case
   if (dashboardData.cities.length > 1) {
@@ -111,7 +117,15 @@ export default async function PlacePage(props: PlacePageProps) {
     notFound();
   }
 
-  const dashboardData = await getCityDashboardData(params.state, params.place);
+  let dashboardData;
+  try {
+    dashboardData = await getCityDashboardData(params.state, params.place);
+  } catch (error) {
+    console.error('[PlacePage] Error loading dashboard data:', error);
+    console.error('[PlacePage] Stack:', error instanceof Error ? error.stack : 'No stack trace');
+    // On error, return 404 - this is safer than showing an error page
+    notFound();
+  }
 
   // Disambiguation case: multiple cities with same slug
   if (dashboardData.cities.length > 1) {
