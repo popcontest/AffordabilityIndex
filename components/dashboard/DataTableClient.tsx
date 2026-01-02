@@ -72,7 +72,9 @@ export function DataTableClient({
                 } ${col.sortable !== false ? 'cursor-pointer hover:bg-gray-50' : ''}`}
                 onClick={() => col.sortable !== false && handleSort(col.key)}
               >
-                <div className="flex items-center gap-1">
+                <div className={`flex items-center gap-1 ${
+                  col.align === 'right' ? 'justify-end' : col.align === 'center' ? 'justify-center' : 'justify-start'
+                }`}>
                   <span>{col.label}</span>
                   {col.sortable !== false && sortKey === col.key && (
                     <span className="text-xs" aria-label={sortDir === 'asc' ? 'sorted ascending' : 'sorted descending'}>

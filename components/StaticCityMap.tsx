@@ -1,11 +1,8 @@
 /**
  * StaticCityMap - Displays a static map image for a city using Mapbox Static Images API
  *
- * Uses Mapbox's geocoding and static image generation to show the city location.
- * This is a lightweight solution that doesn't require JavaScript on the client.
- *
- * Free tier: 50,000 map loads/month
- * Docs: https://docs.mapbox.com/api/maps/static-images/
+ * Uses geocode.maps.co (free, no auth) for geocoding, then Mapbox for static map rendering.
+ * This is a server component that fetches coordinates once during SSR/SSG.
  */
 
 interface StaticCityMapProps {
@@ -14,51 +11,60 @@ interface StaticCityMapProps {
   className?: string;
 }
 
-export function StaticCityMap({ cityName, stateAbbr, className = '' }: StaticCityMapProps) {
+export async function StaticCityMap({ cityName, stateAbbr, className = '' }: StaticCityMapProps) {
   const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
   // If no token, show placeholder
   if (!mapboxToken || mapboxToken.includes('your_token_here')) {
-    return (
-      <div className={`bg-gray-100 rounded-lg flex items-center justify-center ${className}`}>
-        <div className="text-center p-8">
-          <svg className="w-16 h-16 mx-auto text-gray-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-          </svg>
-          <p className="text-sm text-gray-600">
-            Map preview
-            <br />
-            <span className="text-xs text-gray-500">
-              (Mapbox token required)
-            </span>
-          </p>
-        </div>
-      </div>
-    );
+    return <MapPlaceholder cityName={cityName} stateAbbr={stateAbbr} className={className} />;
   }
 
-  // Construct the Mapbox Static Images API URL
+  // Step 1: Geocode using Nominatim (OpenStreetMap) - free, no auth, rate limit: 1/sec
   const query = encodeURIComponent(`${cityName}, ${stateAbbr}, USA`);
+  const geocodingUrl = `https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1&addressdetails=1`;
 
-  // Use Mapbox Geocoding to automatically center the map
-  // Format: /styles/v1/{username}/{style_id}/static/{overlay}/{lon},{lat},{zoom},{bearing},{pitch}/{width}x{height}{@2x}
-  // We use 'auto' for overlay to let Mapbox handle it, but we'll construct a marker URL
+  let lon: number;
+  let lat: number;
 
-  // Pin marker (blue marker for the city)
-  const markerOverlay = `pin-s+3b82f6(${query})`;
+  try {
+    const geocodingResponse = await fetch(geocodingUrl, {
+      next: { revalidate: 2592000 }, // Cache for 30 days
+      headers: {
+        'User-Agent': 'AffordabilityIndex/1.0 (https://affordabilityindex.org)',
+      },
+    });
 
-  // Map parameters
-  const style = 'mapbox/light-v11'; // Clean, minimal style
+    if (!geocodingResponse.ok) {
+      throw new Error(`Nominatim geocoding failed: ${geocodingResponse.status}`);
+    }
+
+    const geocodingData = await geocodingResponse.json();
+
+    if (!Array.isArray(geocodingData) || geocodingData.length === 0) {
+      throw new Error('No geocoding results from Nominatim');
+    }
+
+    lon = parseFloat(geocodingData[0].lon);
+    lat = parseFloat(geocodingData[0].lat);
+  } catch (error) {
+    console.error('Geocoding error for', cityName, stateAbbr, ':', error);
+    return <MapPlaceholder cityName={cityName} stateAbbr={stateAbbr} className={className} />;
+  }
+
+  // Step 2: Construct Mapbox Static Images API URL with coordinates
+  // Format: /styles/v1/{username}/{style_id}/static/{overlay}/{lon},{lat},{zoom}/{width}x{height}{@2x}
+
+  const markerOverlay = `pin-l+4f46e5(${lon},${lat})`; // Large pin, brand purple color
+  const style = 'mapbox/streets-v12'; // Modern, detailed street style
   const width = 600;
   const height = 400;
-  const retina = '@2x'; // High DPI displays
-  const zoom = 10; // City-level zoom
+  const retina = '@2x';
+  const zoom = 12; // Zoom in closer to the city
 
-  // Full URL
-  const mapUrl = `https://api.mapbox.com/styles/v1/${style}/static/${markerOverlay}/auto/${width}x${height}${retina}?access_token=${mapboxToken}&attribution=false&logo=false`;
+  const mapUrl = `https://api.mapbox.com/styles/v1/${style}/static/${markerOverlay}/${lon},${lat},${zoom}/${width}x${height}${retina}?access_token=${mapboxToken}&attribution=false&logo=false`;
 
   return (
-    <div className={`relative rounded-lg overflow-hidden shadow-sm border border-gray-200 ${className}`}>
+    <div className={`relative rounded-xl overflow-hidden shadow-md border border-gray-200 ${className}`}>
       <img
         src={mapUrl}
         alt={`Map of ${cityName}, ${stateAbbr}`}
@@ -69,8 +75,27 @@ export function StaticCityMap({ cityName, stateAbbr, className = '' }: StaticCit
       />
 
       {/* Attribution overlay (required by Mapbox ToS) */}
-      <div className="absolute bottom-0 right-0 bg-white/90 px-2 py-1 text-xs text-gray-600">
-        © <a href="https://www.mapbox.com/about/maps/" target="_blank" rel="noopener noreferrer" className="underline">Mapbox</a> © <a href="http://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" className="underline">OpenStreetMap</a>
+      <div className="absolute bottom-0 right-0 bg-white/95 backdrop-blur-sm px-2 py-1 text-xs text-gray-600 rounded-tl-md">
+        © <a href="https://www.mapbox.com/about/maps/" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-600">Mapbox</a> © <a href="http://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-600">OpenStreetMap</a>
+      </div>
+    </div>
+  );
+}
+
+function MapPlaceholder({ cityName, stateAbbr, className }: StaticCityMapProps) {
+  return (
+    <div className={`relative rounded-lg overflow-hidden shadow-sm border border-gray-200 bg-gradient-to-br from-blue-50 to-gray-100 flex items-center justify-center ${className}`}
+      style={{ minHeight: '400px' }}
+    >
+      <div className="text-center p-8">
+        <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-500 text-white rounded-full mb-3">
+          <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+        </div>
+        <h3 className="text-xl font-semibold text-gray-900">{cityName}</h3>
+        <p className="text-sm text-gray-600 mt-1">{stateAbbr}</p>
       </div>
     </div>
   );

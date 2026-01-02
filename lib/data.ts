@@ -1546,7 +1546,7 @@ async function getCityNearbyBetter(
 
   return better.map((c) => ({
     label: c.name,
-    href: `/${stateFromSlug(stateAbbr.toLowerCase())?.slug || stateAbbr.toLowerCase()}/${c.slug}/`,
+    href: `/${stateFromAbbr(stateAbbr)?.slug || stateAbbr.toLowerCase()}/${c.slug}/`,
     ratio: c.metrics?.ratio ?? null,
     homeValue: c.metrics?.homeValue ?? null,
     income: c.metrics?.income ?? null,
@@ -1577,7 +1577,7 @@ async function getCityNearbyWorse(
 
   return worse.map((c) => ({
     label: c.name,
-    href: `/${stateFromSlug(stateAbbr.toLowerCase())?.slug || stateAbbr.toLowerCase()}/${c.slug}/`,
+    href: `/${stateFromAbbr(stateAbbr)?.slug || stateAbbr.toLowerCase()}/${c.slug}/`,
     ratio: c.metrics?.ratio ?? null,
     homeValue: c.metrics?.homeValue ?? null,
     income: c.metrics?.income ?? null,

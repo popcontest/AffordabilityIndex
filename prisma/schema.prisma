@@ -408,3 +408,33 @@ model DataSourceMetadata {
   @@index([dimension])
   @@map("data_source_metadata")
 }
+
+// V2 Affordability Score (3-component scoring: Housing, COL, Taxes)
+model V2AffordabilityScore {
+  id       Int     @id @default(autoincrement())
+  geoType  GeoType
+  geoId    String  @db.VarChar(16)
+
+  // Component scores (0-100, higher = more affordable)
+  housingScore Float?
+  colScore     Float?
+  taxScore     Float?
+  qolScore     Float? // Reserved for future crime data
+
+  // Composite score (weighted average)
+  compositeScore Float
+
+  // Raw ratios for debugging/analysis
+  housingBurdenRatio Float?
+  colBurdenRatio     Float?
+  taxBurdenRatio     Float?
+
+  // Metadata
+  calculatedAt DateTime  @default(now())
+  dataQuality  String?   @db.VarChar(50) // 'complete', 'partial', 'minimal'
+
+  @@unique([geoType, geoId])
+  @@index([geoType, geoId])
+  @@index([compositeScore(sort: Desc)])
+  @@map("v2_affordability_score")
+}
