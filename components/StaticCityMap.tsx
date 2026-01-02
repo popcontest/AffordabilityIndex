@@ -19,9 +19,9 @@ export async function StaticCityMap({ cityName, stateAbbr, className = '' }: Sta
     return <MapPlaceholder cityName={cityName} stateAbbr={stateAbbr} className={className} />;
   }
 
-  // Step 1: Geocode using Nominatim (OpenStreetMap) - free, no auth, rate limit: 1/sec
+  // Step 1: Geocode using Mapbox Geocoding API
   const query = encodeURIComponent(`${cityName}, ${stateAbbr}, USA`);
-  const geocodingUrl = `https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1&addressdetails=1`;
+  const geocodingUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${query}.json?access_token=${mapboxToken}&limit=1&types=place`;
 
   let lon: number;
   let lat: number;
@@ -29,23 +29,19 @@ export async function StaticCityMap({ cityName, stateAbbr, className = '' }: Sta
   try {
     const geocodingResponse = await fetch(geocodingUrl, {
       next: { revalidate: 2592000 }, // Cache for 30 days
-      headers: {
-        'User-Agent': 'AffordabilityIndex/1.0 (https://affordabilityindex.org)',
-      },
     });
 
     if (!geocodingResponse.ok) {
-      throw new Error(`Nominatim geocoding failed: ${geocodingResponse.status}`);
+      throw new Error(`Mapbox geocoding failed: ${geocodingResponse.status}`);
     }
 
     const geocodingData = await geocodingResponse.json();
 
-    if (!Array.isArray(geocodingData) || geocodingData.length === 0) {
-      throw new Error('No geocoding results from Nominatim');
+    if (!geocodingData.features || geocodingData.features.length === 0) {
+      throw new Error('No geocoding results from Mapbox');
     }
 
-    lon = parseFloat(geocodingData[0].lon);
-    lat = parseFloat(geocodingData[0].lat);
+    [lon, lat] = geocodingData.features[0].center;
   } catch (error) {
     console.error('Geocoding error for', cityName, stateAbbr, ':', error);
     return <MapPlaceholder cityName={cityName} stateAbbr={stateAbbr} className={className} />;
