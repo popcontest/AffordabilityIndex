@@ -247,52 +247,57 @@ export async function buildFullBasketScoreBreakdown(
   affordabilityPercentile: number | null | undefined,
   income?: number | null
 ): Promise<ScoreBreakdown> {
-  const housingScore = clampScore(affordabilityPercentile ?? null);
+  try {
+    const housingScore = clampScore(affordabilityPercentile ?? null);
 
-  // Try to get v2 cost basket data
-  const basket = await getCityCostBasket(cityId);
+    // Try to get v2 cost basket data
+    const basket = await getCityCostBasket(cityId);
 
-  // Fallback to v1 if no basket or no income
-  if (!basket || !income) {
+    // Fallback to v1 if no basket or no income
+    if (!basket || !income) {
+      return buildHousingOnlyScoreBreakdown(affordabilityPercentile);
+    }
+
+    // Compute essentials score (disposable income percentile)
+    const essentialsScore = await computeDisposableIncomePercentile(
+      cityId,
+      income,
+      basket.totalAnnual
+    );
+
+    // Fallback to v1 if essentials computation fails
+    if (essentialsScore === null || housingScore === null) {
+      return buildHousingOnlyScoreBreakdown(affordabilityPercentile);
+    }
+
+    // v2: Weighted blend (60% housing, 40% essentials)
+    const overallScore = Math.round(0.6 * housingScore + 0.4 * essentialsScore);
+    const grade = scoreToGrade(overallScore);
+
+    return {
+      version: 'v2_full',
+      overallScore,
+      grade,
+      housingScore,
+      essentialsScore: clampScore(essentialsScore),
+      taxesScore: null, // Future: component breakdown
+      healthcareScore: null, // Future: component breakdown
+      basket: {
+        source: basket.source,
+        version: basket.version,
+        householdType: basket.householdType,
+        totalAnnual: basket.totalAnnual,
+      },
+      notes: [
+        'v2: Full cost-of-living basket (housing + essentials)',
+        `Overall = 60% housing + 40% essentials (${basket.householdType})`,
+        'Essentials score based on disposable income after annual costs',
+      ],
+    };
+  } catch (error) {
+    console.error('[buildFullBasketScoreBreakdown] Error:', error);
     return buildHousingOnlyScoreBreakdown(affordabilityPercentile);
   }
-
-  // Compute essentials score (disposable income percentile)
-  const essentialsScore = await computeDisposableIncomePercentile(
-    cityId,
-    income,
-    basket.totalAnnual
-  );
-
-  // Fallback to v1 if essentials computation fails
-  if (essentialsScore === null || housingScore === null) {
-    return buildHousingOnlyScoreBreakdown(affordabilityPercentile);
-  }
-
-  // v2: Weighted blend (60% housing, 40% essentials)
-  const overallScore = Math.round(0.6 * housingScore + 0.4 * essentialsScore);
-  const grade = scoreToGrade(overallScore);
-
-  return {
-    version: 'v2_full',
-    overallScore,
-    grade,
-    housingScore,
-    essentialsScore: clampScore(essentialsScore),
-    taxesScore: null, // Future: component breakdown
-    healthcareScore: null, // Future: component breakdown
-    basket: {
-      source: basket.source,
-      version: basket.version,
-      householdType: basket.householdType,
-      totalAnnual: basket.totalAnnual,
-    },
-    notes: [
-      'v2: Full cost-of-living basket (housing + essentials)',
-      `Overall = 60% housing + 40% essentials (${basket.householdType})`,
-      'Essentials score based on disposable income after annual costs',
-    ],
-  };
 }
 
 // ============================================================================

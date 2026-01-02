@@ -59,13 +59,7 @@ export async function generateMetadata(props: PlacePageProps): Promise<Metadata>
     };
   }
 
-  let dashboardData;
-  try {
-    dashboardData = await getCityDashboardData(params.state, params.place);
-  } catch (error) {
-    console.error('Error loading metadata for city:', error);
-    return { title: 'City Not Found' };
-  }
+  const dashboardData = await getCityDashboardData(params.state, params.place);
 
   // Disambiguation case
   if (dashboardData.cities.length > 1) {
@@ -117,26 +111,7 @@ export default async function PlacePage(props: PlacePageProps) {
     notFound();
   }
 
-  let dashboardData;
-  let hadError = false;
-
-  try {
-    dashboardData = await getCityDashboardData(params.state, params.place);
-  } catch (error) {
-    console.error('Error loading city dashboard data:', error);
-    hadError = true;
-    // Return empty dashboard data - we'll show an error message instead of 404
-    dashboardData = {
-      city: null,
-      cities: [],
-      benchmarks: [],
-      nearbyBetter: [],
-      nearbyWorse: [],
-      affordabilitySnapshot: null,
-      rankData: null,
-      score: { version: 'v1_housing' as const, overallScore: 0, grade: 'N/A' as const, housingScore: null, essentialsScore: null, taxesScore: null, healthcareScore: null, notes: [] },
-    };
-  }
+  const dashboardData = await getCityDashboardData(params.state, params.place);
 
   // Disambiguation case: multiple cities with same slug
   if (dashboardData.cities.length > 1) {
@@ -145,18 +120,11 @@ export default async function PlacePage(props: PlacePageProps) {
 
   // Single city case
   const city = dashboardData.city;
-
-  // Only show 404 if no city found AND we didn't have a database error
-  if (!city && !hadError) {
+  if (!city) {
     notFound();
   }
 
-  // If we had an error and no city, show error page
-  if (!city && hadError) {
-    return renderErrorPage(state, params.place);
-  }
-
-  return renderCityDashboard(city!, dashboardData, state, params.place);
+  return renderCityDashboard(city, dashboardData, state, params.place);
 }
 
 async function renderCityDashboard(
@@ -427,53 +395,6 @@ async function renderCityDashboard(
             </Panel>
           </>
         )}
-      </DashboardShell>
-    </>
-  );
-}
-
-function renderErrorPage(
-  state: { name: string; abbr: string; slug: string },
-  slug: string
-) {
-  const breadcrumbs = [
-    { name: 'Home', url: canonical('/') },
-    { name: state.name, url: canonical(`/${state.slug}/`) },
-  ];
-
-  return (
-    <>
-      <JsonLd data={generateBreadcrumbJsonLd(breadcrumbs)} />
-
-      <DashboardShell>
-        <div className="max-w-2xl mx-auto text-center py-12">
-          <div className="mb-6">
-            <svg className="mx-auto h-16 w-16 text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-          </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-4">Temporarily Unavailable</h1>
-          <p className="text-lg text-gray-600 mb-6">
-            We're experiencing technical difficulties loading data for this location.
-          </p>
-          <p className="text-gray-600 mb-8">
-            Our team has been notified and is working to resolve the issue. Please try again in a few minutes.
-          </p>
-          <div className="flex gap-4 justify-center">
-            <Link
-              href={`/${state.slug}/`}
-              className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-            >
-              View {state.name}
-            </Link>
-            <Link
-              href="/"
-              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-            >
-              Go Home
-            </Link>
-          </div>
-        </div>
       </DashboardShell>
     </>
   );
