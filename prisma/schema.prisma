@@ -47,8 +47,6 @@ model GeoCity {
   metro      String? @db.VarChar(255)
   slug       String  @db.VarChar(255) // slugified name (no state suffix)
   population Int? // Population (optional)
-  latitude   Float? // For map display
-  longitude  Float? // For map display
 
   @@index([stateAbbr, slug])
   @@index([stateAbbr, name])
