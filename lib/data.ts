@@ -1083,130 +1083,9 @@ export async function getCityDashboardData(
   stateSlug: string,
   placeParam: string
 ): Promise<CityDashboardData> {
-  try {
-    // Resolve state abbreviation from slug
-    const state = stateFromSlug(stateSlug);
-    if (!state) {
-      return {
-        city: null,
-        cities: [],
-        benchmarks: [],
-        nearbyBetter: [],
-        nearbyWorse: [],
-        affordabilitySnapshot: null,
-        rankData: null,
-        score: buildHousingOnlyScoreBreakdown(null),
-      };
-    }
-
-    // Check if placeParam has cityId suffix (e.g., "springfield-12345")
-    const cityIdMatch = placeParam.match(/^(.+)-(\d+)$/);
-
-    if (cityIdMatch) {
-      // Direct cityId lookup
-      const [, , cityId] = cityIdMatch;
-      const city = await getCityById(cityId);
-
-      if (!city || city.stateAbbr !== state.abbr) {
-        return {
-          city: null,
-          cities: [],
-          benchmarks: [],
-          nearbyBetter: [],
-          nearbyWorse: [],
-          affordabilitySnapshot: null,
-          rankData: null,
-          score: buildHousingOnlyScoreBreakdown(null),
-        };
-      }
-
-      const [benchmarks, nearbyBetter, nearbyWorse, affordabilitySnapshot, rankData] = await Promise.all([
-        getCityBenchmarks(city, state.abbr),
-        getCityNearbyBetter(city, state.abbr),
-        getCityNearbyWorse(city, state.abbr),
-        getAffordabilitySnapshot('CITY', cityId),
-        getCityAffordabilityRank(cityId),
-      ]);
-
-      const score = await buildFullBasketScoreBreakdown(
-        cityId,
-        rankData.usPercentMoreAffordable,
-        affordabilitySnapshot?.medianIncome
-      );
-
-      return {
-        city,
-        cities: [],
-        benchmarks,
-        nearbyBetter,
-        nearbyWorse,
-        affordabilitySnapshot,
-        rankData,
-        score,
-      };
-    }
-
-    // Simple slug lookup - may return multiple cities for disambiguation
-    const citySlug = placeParam;
-    const cities = await getCityByStateAndSlug(state.abbr, citySlug);
-
-    if (cities.length === 0) {
-      return {
-        city: null,
-        cities: [],
-        benchmarks: [],
-        nearbyBetter: [],
-        nearbyWorse: [],
-        affordabilitySnapshot: null,
-        rankData: null,
-        score: buildHousingOnlyScoreBreakdown(null),
-      };
-    }
-
-    if (cities.length === 1) {
-      // Unique city - fetch full dashboard data
-      const city = cities[0];
-      const [benchmarks, nearbyBetter, nearbyWorse, affordabilitySnapshot, rankData] = await Promise.all([
-        getCityBenchmarks(city, state.abbr),
-        getCityNearbyBetter(city, state.abbr),
-        getCityNearbyWorse(city, state.abbr),
-        getAffordabilitySnapshot('CITY', city.cityId),
-        getCityAffordabilityRank(city.cityId),
-      ]);
-
-      const score = await buildFullBasketScoreBreakdown(
-        city.cityId,
-        rankData.usPercentMoreAffordable,
-        affordabilitySnapshot?.medianIncome
-      );
-
-      return {
-        city,
-        cities: [],
-        benchmarks,
-        nearbyBetter,
-        nearbyWorse,
-        affordabilitySnapshot,
-        rankData,
-        score,
-      };
-    }
-
-    // Multiple cities with same slug - return for disambiguation
-    return {
-      city: null,
-      cities,
-      benchmarks: [],
-      nearbyBetter: [],
-      nearbyWorse: [],
-      affordabilitySnapshot: null,
-      rankData: null,
-      score: buildHousingOnlyScoreBreakdown(null),
-    };
-  } catch (error) {
-    console.error('[getCityDashboardData] Unexpected error:', error);
-    console.error('[getCityDashboardData] Params:', { stateSlug, placeParam });
-    // Return empty dashboard data on error to prevent page crashes
+  // Resolve state abbreviation from slug
+  const state = stateFromSlug(stateSlug);
+  if (!state) {
     return {
       city: null,
       cities: [],
@@ -1218,6 +1097,117 @@ export async function getCityDashboardData(
       score: buildHousingOnlyScoreBreakdown(null),
     };
   }
+
+  // Check if placeParam has cityId suffix (e.g., "springfield-12345")
+  const cityIdMatch = placeParam.match(/^(.+)-(\d+)$/);
+
+  if (cityIdMatch) {
+    // Direct cityId lookup
+    const [, , cityId] = cityIdMatch;
+    const city = await getCityById(cityId).catch(err => {
+      console.error('[getCityById] Error:', err);
+      return null;
+    });
+
+    if (!city || city.stateAbbr !== state.abbr) {
+      return {
+        city: null,
+        cities: [],
+        benchmarks: [],
+        nearbyBetter: [],
+        nearbyWorse: [],
+        affordabilitySnapshot: null,
+        rankData: null,
+        score: buildHousingOnlyScoreBreakdown(null),
+      };
+    }
+
+    const [benchmarks, nearbyBetter, nearbyWorse, affordabilitySnapshot, rankData] = await Promise.all([
+      getCityBenchmarks(city, state.abbr).catch(err => { console.error('[getCityBenchmarks] Error:', err); return []; }),
+      getCityNearbyBetter(city, state.abbr).catch(err => { console.error('[getCityNearbyBetter] Error:', err); return []; }),
+      getCityNearbyWorse(city, state.abbr).catch(err => { console.error('[getCityNearbyWorse] Error:', err); return []; }),
+      getAffordabilitySnapshot('CITY', cityId).catch(err => { console.error('[getAffordabilitySnapshot] Error:', err); return null; }),
+      getCityAffordabilityRank(cityId).catch(err => { console.error('[getCityAffordabilityRank] Error:', err); return { stateRank: null, stateCount: null, statePercentMoreAffordable: null, usRank: null, usCount: null, usPercentMoreAffordable: null }; }),
+    ]);
+
+    const score = await buildFullBasketScoreBreakdown(
+      cityId,
+      rankData.usPercentMoreAffordable,
+      affordabilitySnapshot?.medianIncome
+    ).catch(err => { console.error('[buildFullBasketScoreBreakdown] Error:', err); return buildHousingOnlyScoreBreakdown(null); });
+
+    return {
+      city,
+      cities: [],
+      benchmarks,
+      nearbyBetter,
+      nearbyWorse,
+      affordabilitySnapshot,
+      rankData,
+      score,
+    };
+  }
+
+  // Simple slug lookup - may return multiple cities for disambiguation
+  const citySlug = placeParam;
+  const cities = await getCityByStateAndSlug(state.abbr, citySlug).catch(err => {
+    console.error('[getCityByStateAndSlug] Error:', err);
+    return [];
+  });
+
+  if (cities.length === 0) {
+    return {
+      city: null,
+      cities: [],
+      benchmarks: [],
+      nearbyBetter: [],
+      nearbyWorse: [],
+      affordabilitySnapshot: null,
+      rankData: null,
+      score: buildHousingOnlyScoreBreakdown(null),
+    };
+  }
+
+  if (cities.length === 1) {
+    // Unique city - fetch full dashboard data
+    const city = cities[0];
+    const [benchmarks, nearbyBetter, nearbyWorse, affordabilitySnapshot, rankData] = await Promise.all([
+      getCityBenchmarks(city, state.abbr).catch(err => { console.error('[getCityBenchmarks] Error:', err); return []; }),
+      getCityNearbyBetter(city, state.abbr).catch(err => { console.error('[getCityNearbyBetter] Error:', err); return []; }),
+      getCityNearbyWorse(city, state.abbr).catch(err => { console.error('[getCityNearbyWorse] Error:', err); return []; }),
+      getAffordabilitySnapshot('CITY', city.cityId).catch(err => { console.error('[getAffordabilitySnapshot] Error:', err); return null; }),
+      getCityAffordabilityRank(city.cityId).catch(err => { console.error('[getCityAffordabilityRank] Error:', err); return { stateRank: null, stateCount: null, statePercentMoreAffordable: null, usRank: null, usCount: null, usPercentMoreAffordable: null }; }),
+    ]);
+
+    const score = await buildFullBasketScoreBreakdown(
+      city.cityId,
+      rankData.usPercentMoreAffordable,
+      affordabilitySnapshot?.medianIncome
+    ).catch(err => { console.error('[buildFullBasketScoreBreakdown] Error:', err); return buildHousingOnlyScoreBreakdown(null); });
+
+    return {
+      city,
+      cities: [],
+      benchmarks,
+      nearbyBetter,
+      nearbyWorse,
+      affordabilitySnapshot,
+      rankData,
+      score,
+    };
+  }
+
+  // Multiple cities with same slug - return for disambiguation
+  return {
+    city: null,
+    cities,
+    benchmarks: [],
+    nearbyBetter: [],
+    nearbyWorse: [],
+    affordabilitySnapshot: null,
+    rankData: null,
+    score: buildHousingOnlyScoreBreakdown(null),
+  };
 }
 
 /**
