@@ -133,11 +133,21 @@ async function renderCityDashboard(
   state: { name: string; abbr: string; slug: string },
   placeParam: string
 ) {
-  // Fetch required income for this city
-  const requiredIncome = await calculateRequiredIncome('CITY', city.cityId);
+  // Fetch required income for this city (with error handling)
+  let requiredIncome = null;
+  try {
+    requiredIncome = await calculateRequiredIncome('CITY', city.cityId);
+  } catch (error) {
+    console.error('Failed to calculate required income:', error);
+  }
 
-  // Fetch V2 affordability score
-  const v2Score = await getV2Score('CITY', city.cityId);
+  // Fetch V2 affordability score (with error handling)
+  let v2Score = null;
+  try {
+    v2Score = await getV2Score('CITY', city.cityId);
+  } catch (error) {
+    console.error('Failed to fetch V2 score:', error);
+  }
 
   const breadcrumbItems = [
     { label: 'Home', href: '/' },
