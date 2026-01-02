@@ -31,13 +31,8 @@ import {
   deriveAffordabilityLabel,
 } from '@/lib/viewModels';
 
-// TODO: Once data is finalized and loaded, enable ISR:
-// export const revalidate = 3600; // Revalidate every hour
-
-// TODO: Generate static paths for all ZIPs:
-// export async function generateStaticParams() {
-//   // Fetch all ZCTAs, return array of { zip: zcta }
-// }
+// ISR: Cache pages for 60 days, then revalidate on next request
+export const revalidate = 5184000; // 60 days in seconds
 
 interface ZipPageProps {
   params: Promise<{

@@ -4,14 +4,17 @@
  */
 
 import type { ScoreBreakdown } from '@/lib/scoreTypes';
+import type { RequiredIncomeData } from '@/lib/required-income';
 import { scoreLabel, getScoreColor } from '@/lib/scoring';
+import { formatCurrency } from '@/lib/viewModels';
 
 interface ScoreHeroProps {
   score: ScoreBreakdown;
   locationName: string;
+  requiredIncome?: RequiredIncomeData | null;
 }
 
-export function ScoreHero({ score, locationName }: ScoreHeroProps) {
+export function ScoreHero({ score, locationName, requiredIncome }: ScoreHeroProps) {
   const { overallScore, grade } = score;
 
   if (overallScore === null || grade === null) {
@@ -91,6 +94,20 @@ export function ScoreHero({ score, locationName }: ScoreHeroProps) {
             <>Housing affordability is a serious challenge. Only higher-income households can comfortably afford homes here.</>
           )}
         </div>
+
+        {/* Required Family Income - Above Fold Feature */}
+        {requiredIncome && (
+          <div className="mt-8 pt-6 border-t-2 border-gray-300">
+            <div className="bg-gradient-to-r from-blue-100 to-purple-100 rounded-xl p-6 shadow-md">
+              <p className="text-lg font-semibold text-gray-800 mb-2">
+                A family needs <span className="text-2xl font-bold text-blue-700">{formatCurrency(requiredIncome.requiredAnnualIncome)}/year</span> to live comfortably here
+              </p>
+              <p className="text-sm text-gray-600">
+                Based on typical housing costs, living expenses, and taxes for a family of 4
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Decorative gradient overlay */}

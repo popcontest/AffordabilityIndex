@@ -83,9 +83,11 @@ export function ScoreBreakdownPanel({ score }: ScoreBreakdownPanelProps) {
         </div>
         <div className="flex items-center justify-between text-sm">
           <span className="text-gray-500">vs. US median: {NATIONAL_MEDIANS.housing}</span>
-          <span className={`font-medium ${overallScore > NATIONAL_MEDIANS.housing ? 'text-green-600' : 'text-red-600'}`}>
-            {overallScore > NATIONAL_MEDIANS.housing ? '↑' : '↓'} {Math.abs(overallScore - NATIONAL_MEDIANS.housing).toFixed(0)} points
-          </span>
+          {overallScore !== null && (
+            <span className={`font-medium ${overallScore > NATIONAL_MEDIANS.housing ? 'text-green-600' : 'text-red-600'}`}>
+              {overallScore > NATIONAL_MEDIANS.housing ? '↑' : '↓'} {Math.abs(overallScore - NATIONAL_MEDIANS.housing).toFixed(0)} points
+            </span>
+          )}
         </div>
       </div>
 

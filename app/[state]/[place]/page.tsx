@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { canonical } from '@/lib/seo';
 import { stateFromSlug } from '@/lib/usStates';
 import { getCityDashboardData, type CityWithMetrics } from '@/lib/data';
+import { calculateRequiredIncome } from '@/lib/required-income';
+import { getV2Score } from '@/lib/v2-scores';
 import { JsonLd, generateBreadcrumbJsonLd } from '@/components/JsonLd';
 import { DashboardShell } from '@/components/dashboard/DashboardShell';
 import { Breadcrumbs } from '@/components/dashboard/Breadcrumbs';
@@ -26,6 +28,7 @@ import { FitSignals } from '@/components/FitSignals';
 import { ScoreHero } from '@/components/ScoreHero';
 import { ScoreBreakdownPanel } from '@/components/ScoreBreakdownPanel';
 import { TrueAffordabilitySection } from '@/components/TrueAffordabilitySection';
+import V2ScoreCard from '@/components/V2ScoreCard';
 import { StaticCityMap } from '@/components/StaticCityMap';
 import {
   formatCurrency,
@@ -36,13 +39,8 @@ import {
   formatStateComparison,
 } from '@/lib/viewModels';
 
-// TODO: Once data is finalized and loaded, enable ISR:
-// export const revalidate = 3600; // Revalidate every hour
-
-// TODO: Generate static paths for all cities:
-// export async function generateStaticParams() {
-//   // Fetch all states and cities, return array of { state: slug, place: slug }
-// }
+// ISR: Cache pages for 60 days, then revalidate on next request
+export const revalidate = 5184000; // 60 days in seconds
 
 interface PlacePageProps {
   params: Promise<{
@@ -129,12 +127,18 @@ export default async function PlacePage(props: PlacePageProps) {
   return renderCityDashboard(city, dashboardData, state, params.place);
 }
 
-function renderCityDashboard(
+async function renderCityDashboard(
   city: CityWithMetrics,
   dashboardData: ReturnType<typeof getCityDashboardData> extends Promise<infer T> ? T : never,
   state: { name: string; abbr: string; slug: string },
   placeParam: string
 ) {
+  // Fetch required income for this city
+  const requiredIncome = await calculateRequiredIncome('CITY', city.cityId);
+
+  // Fetch V2 affordability score
+  const v2Score = await getV2Score('CITY', city.cityId);
+
   const breadcrumbItems = [
     { label: 'Home', href: '/' },
     { label: state.name, href: `/${state.slug}/` },
@@ -211,7 +215,7 @@ function renderCityDashboard(
 
           {/* Score Hero - Right Side */}
           <div className="order-1 lg:order-2">
-            <ScoreHero score={dashboardData.score} locationName={`${city.name}, ${state.abbr}`} />
+            <ScoreHero score={dashboardData.score} locationName={`${city.name}, ${state.abbr}`} requiredIncome={requiredIncome} />
           </div>
         </div>
       </div>
@@ -226,6 +230,11 @@ function renderCityDashboard(
         {/* Score Breakdown Panel */}
         <div className="mb-12">
           <ScoreBreakdownPanel score={dashboardData.score} />
+        </div>
+
+        {/* V2 Affordability Score Card */}
+        <div className="mb-12">
+          <V2ScoreCard score={v2Score} placeName={city.name} />
         </div>
 
         {!hasMetrics && (
