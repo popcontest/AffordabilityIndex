@@ -507,6 +507,8 @@ export async function getCityByStateAndSlug(
   stateAbbr: string,
   citySlug: string
 ): Promise<CityWithMetrics[]> {
+  console.log(`[getCityByStateAndSlug] Querying database: stateAbbr=${stateAbbr.toUpperCase()}, slug=${citySlug}`);
+
   // Find all cities in the state with this slug
   const cities = await prisma.geoCity.findMany({
     where: {
@@ -514,6 +516,8 @@ export async function getCityByStateAndSlug(
       slug: citySlug,
     },
   });
+
+  console.log(`[getCityByStateAndSlug] Database returned ${cities.length} cities`);
 
   // Fetch latest snapshot for each
   const citiesWithMetrics: CityWithMetrics[] = [];
@@ -1150,12 +1154,22 @@ export async function getCityDashboardData(
 
   // Simple slug lookup - may return multiple cities for disambiguation
   const citySlug = placeParam;
+  console.log(`[getCityDashboardData] Looking up city: state=${state.abbr}, slug=${citySlug}`);
+
   const cities = await getCityByStateAndSlug(state.abbr, citySlug).catch(err => {
-    console.error('[getCityByStateAndSlug] Error:', err);
+    console.error('[getCityByStateAndSlug] ERROR occurred during lookup:', {
+      state: state.abbr,
+      slug: citySlug,
+      error: err?.message || err,
+      stack: err?.stack
+    });
     return [];
   });
 
+  console.log(`[getCityDashboardData] Found ${cities.length} cities matching slug "${citySlug}"`);
+
   if (cities.length === 0) {
+    console.log(`[getCityDashboardData] No cities found - returning 404 data`);
     return {
       city: null,
       cities: [],
