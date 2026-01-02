@@ -11,7 +11,7 @@ interface StaticCityMapProps {
   className?: string;
 }
 
-export async function StaticCityMap({ cityName, stateAbbr, className = '' }: StaticCityMapProps) {
+export function StaticCityMap({ cityName, stateAbbr, className = '' }: StaticCityMapProps) {
   // TEMPORARY: Disable geocoding to prevent production errors
   // TODO: Re-enable once Mapbox Geocoding API scope is confirmed working in production
   return <MapPlaceholder cityName={cityName} stateAbbr={stateAbbr} className={className} />;
