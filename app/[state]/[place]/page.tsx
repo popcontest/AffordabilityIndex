@@ -122,7 +122,17 @@ export default async function PlacePage(props: PlacePageProps) {
     dashboardData = await getCityDashboardData(params.state, params.place);
   } catch (error) {
     console.error('Error loading city dashboard data:', error);
-    notFound();
+    // Return empty dashboard data instead of 404 on database errors
+    dashboardData = {
+      city: null,
+      cities: [],
+      benchmarks: [],
+      nearbyBetter: [],
+      nearbyWorse: [],
+      affordabilitySnapshot: null,
+      rankData: null,
+      score: { version: 'v1_housing_only', overallScore: 0, grade: 'N/A', housingScore: null, essentialsScore: null, taxesScore: null, healthcareScore: null, notes: [] },
+    };
   }
 
   // Disambiguation case: multiple cities with same slug
