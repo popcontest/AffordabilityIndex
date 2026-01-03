@@ -12,6 +12,9 @@ export function SourcesFooter({ zillowDate, acsVintage, isZCTA }: SourcesFooterP
     ? zillowDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
     : 'Recent';
 
+  // Default to ACS 2018-2022 5-Year Estimates if not provided
+  const acsVintageStr = acsVintage || 'ACS 2018-2022 5-Year Estimates';
+
   return (
     <div className="space-y-3 text-xs text-gray-600">
       <div>
@@ -30,8 +33,7 @@ export function SourcesFooter({ zillowDate, acsVintage, isZCTA }: SourcesFooterP
             )
           </li>
           <li>
-            Income: US Census Bureau, American Community Survey
-            {acsVintage ? ` (${acsVintage})` : ''}
+            Income: US Census Bureau {acsVintageStr}
           </li>
         </ul>
       </div>

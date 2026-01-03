@@ -37,7 +37,7 @@ export function Footer() {
               Discover where your money goes furthest. Compare home affordability across thousands of US cities, towns, and ZIP codes.
             </p>
             <p className="text-xs text-gray-500">
-              Data sources: Zillow Research (home values), US Census Bureau ACS (household income)
+              Data sources: Zillow Research (home values), US Census Bureau ACS 2018-2022 5-Year Estimates (household income)
             </p>
           </div>
 

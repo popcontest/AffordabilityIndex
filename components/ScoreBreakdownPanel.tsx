@@ -23,11 +23,13 @@ const NATIONAL_MEDIANS = {
 };
 
 // Component weights (for display purposes)
+// Current implementation uses: 60% housing, 40% essentials
+// Tax and healthcare components are not yet implemented
 const COMPONENT_WEIGHTS = {
   housing: 60,
-  essentials: 25,
-  taxes: 10,
-  healthcare: 5,
+  essentials: 40,
+  taxes: 0,  // Not yet implemented
+  healthcare: 0,  // Not yet implemented
 };
 
 export function ScoreBreakdownPanel({ score }: ScoreBreakdownPanelProps) {
