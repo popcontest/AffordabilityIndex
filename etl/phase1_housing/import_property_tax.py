@@ -159,13 +159,20 @@ def import_property_tax(dry_run=False):
         )
 
         # Also need to filter by geoType - use custom query for this specific case
-        cursor.execute("""
+        # Build VALUES clause manually for psycopg2
+        from psycopg2.extras import execute_values
+        execute_values(
+            cursor,
+            """
             UPDATE affordability_snapshot AS a
             SET "propertyTaxRate" = v.tax_rate
             FROM (VALUES %s) AS v(tax_rate, city_id)
             WHERE a."geoType" = 'CITY'
               AND a."geoId" = v.city_id
-        """, [(rate, cid) for rate, cid in updates])
+            """,
+            updates,
+            template="(%s, %s)"
+        )
 
         rows_updated = cursor.rowcount
         conn.commit()

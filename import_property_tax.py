@@ -137,15 +137,19 @@ def get_all_zips_from_db(conn) -> List[Dict]:
 def insert_or_update_property_tax(conn, geo_type: str, geo_id: str,
                                    rate_data: Dict, source: str = "API Ninjas"):
     """Insert or update property tax rate in database."""
+    import uuid
     cursor = conn.cursor()
+
+    # Generate a unique ID for the record (format: geoType-geoId-year)
+    record_id = f"{geo_type}-{geo_id}-{TAX_YEAR}"
 
     query = """
     INSERT INTO property_tax_rate (
-        "geoType", "geoId", "effectiveRate", "rate25th", "rate75th", "asOfYear", source, "updatedAt"
+        id, "geoType", "geoId", "effectiveRate", "rate25th", "rate75th", "asOfYear", source, "updatedAt"
     ) VALUES (
-        %s, %s, %s, %s, %s, %s, %s, NOW()
+        %s, %s, %s, %s, %s, %s, %s, %s, NOW()
     )
-    ON CONFLICT ("geoType", "geoId", "asOfYear")
+    ON CONFLICT (id)
     DO UPDATE SET
         "effectiveRate" = EXCLUDED."effectiveRate",
         "rate25th" = EXCLUDED."rate25th",
@@ -155,6 +159,7 @@ def insert_or_update_property_tax(conn, geo_type: str, geo_id: str,
     """
 
     cursor.execute(query, (
+        record_id,
         geo_type,
         geo_id,
         rate_data['median_rate'],

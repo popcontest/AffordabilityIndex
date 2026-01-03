@@ -77,13 +77,16 @@ for zip_data in zips:
 print("\n4. Testing INSERT query...")
 cursor = conn.cursor()
 
+# Generate test record ID
+test_id = "CITY-test_city_123-2024"
+
 query = """
 INSERT INTO property_tax_rate (
-    "geoType", "geoId", "effectiveRate", "rate25th", "rate75th", "asOfYear", source, "updatedAt"
+    id, "geoType", "geoId", "effectiveRate", "rate25th", "rate75th", "asOfYear", source, "updatedAt"
 ) VALUES (
-    %s, %s, %s, %s, %s, %s, %s, NOW()
+    %s, %s, %s, %s, %s, %s, %s, %s, NOW()
 )
-ON CONFLICT ("geoType", "geoId", "asOfYear")
+ON CONFLICT (id)
 DO UPDATE SET
     "effectiveRate" = EXCLUDED."effectiveRate",
     "rate25th" = EXCLUDED."rate25th",
@@ -94,6 +97,7 @@ RETURNING id, "geoId", "effectiveRate"
 """
 
 cursor.execute(query, (
+    test_id,
     'CITY',
     'test_city_123',
     1.25,  # 1.25%
