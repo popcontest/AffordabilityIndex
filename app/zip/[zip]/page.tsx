@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { canonical, isZip } from '@/lib/seo';
 import { getZipDashboardData, getStateRankingForZip, buildV2ScoreBreakdown } from '@/lib/data';
+import { calculateRequiredIncome } from '@/lib/required-income';
 import { stateFromAbbr } from '@/lib/usStates';
 import { getV2Score } from '@/lib/v2-scores';
 import { JsonLd, generateBreadcrumbJsonLd } from '@/components/JsonLd';
@@ -115,6 +116,14 @@ export default async function ZipPage(props: ZipPageProps) {
     console.error('Failed to fetch V2 score for ZIP:', error);
   }
 
+  // Fetch required income for this ZIP (with error handling)
+  let requiredIncome = null;
+  try {
+    requiredIncome = await calculateRequiredIncome('ZCTA', zip);
+  } catch (error) {
+    console.error('Failed to calculate required income:', error);
+  }
+
   // Build score breakdown - use V2 composite score if available, otherwise use dashboard score
   const heroScore = buildV2ScoreBreakdown(v2Score);
 
@@ -201,7 +210,7 @@ export default async function ZipPage(props: ZipPageProps) {
 
       {/* Score Hero */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <ScoreHero score={heroScore} locationName={locationName} />
+        <ScoreHero score={heroScore} locationName={locationName} requiredIncome={requiredIncome} />
       </div>
 
       <DashboardShell
