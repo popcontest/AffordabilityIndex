@@ -20,6 +20,7 @@ import { stateFromSlug, stateFromAbbr } from './usStates';
 import type { BenchmarkRow, NearbyRow } from './viewModels';
 import type { ScoreBreakdown } from './scoreTypes';
 import { clampScore, scoreToGrade } from './scoring';
+import type { V2ScoreData } from './v2-scores';
 
 // ============================================================================
 // Population Bucket Filters (Centralized)
@@ -120,6 +121,34 @@ export function buildHousingOnlyScoreBreakdown(
     notes: [
       'v1: Housing-only affordability (home value ÷ income percentile)',
       'Future: Will include essentials, taxes, healthcare in weighted blend',
+    ],
+  };
+}
+
+/**
+ * Build score breakdown from V2 affordability score data
+ * @param v2Score - V2 score data from v2_affordability_score table
+ * @returns ScoreBreakdown with v2 composite score as overall score
+ */
+export function buildV2ScoreBreakdown(v2Score: V2ScoreData | null): ScoreBreakdown {
+  if (!v2Score) {
+    return buildHousingOnlyScoreBreakdown(null);
+  }
+
+  const overallScore = clampScore(v2Score.compositeScore);
+  const grade = scoreToGrade(overallScore);
+
+  return {
+    version: 'v2_full',
+    overallScore,
+    grade,
+    housingScore: v2Score.housingScore,
+    essentialsScore: v2Score.colScore,
+    taxesScore: v2Score.taxScore,
+    healthcareScore: v2Score.qolScore,
+    notes: [
+      'v2: Full affordability score (housing + cost of living + taxes)',
+      'Composite score represents true affordability across all major expenses',
     ],
   };
 }

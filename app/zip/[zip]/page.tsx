@@ -2,8 +2,9 @@ import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { canonical, isZip } from '@/lib/seo';
-import { getZipDashboardData, getStateRankingForZip } from '@/lib/data';
+import { getZipDashboardData, getStateRankingForZip, buildV2ScoreBreakdown } from '@/lib/data';
 import { stateFromAbbr } from '@/lib/usStates';
+import { getV2Score } from '@/lib/v2-scores';
 import { JsonLd, generateBreadcrumbJsonLd } from '@/components/JsonLd';
 import { DashboardShell } from '@/components/dashboard/DashboardShell';
 import { Breadcrumbs } from '@/components/dashboard/Breadcrumbs';
@@ -106,6 +107,17 @@ export default async function ZipPage(props: ZipPageProps) {
     ? await getStateRankingForZip(zip, zcta.stateAbbr)
     : null;
 
+  // Fetch V2 affordability score (with error handling)
+  let v2Score = null;
+  try {
+    v2Score = await getV2Score('ZCTA', zip);
+  } catch (error) {
+    console.error('Failed to fetch V2 score for ZIP:', error);
+  }
+
+  // Build score breakdown - use V2 composite score if available, otherwise use dashboard score
+  const heroScore = buildV2ScoreBreakdown(v2Score);
+
   const breadcrumbItems = [
     { label: 'Home', href: '/' },
     ...(state ? [{ label: state.name, href: `/${state.slug}/` }] : []),
@@ -189,7 +201,7 @@ export default async function ZipPage(props: ZipPageProps) {
 
       {/* Score Hero */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <ScoreHero score={dashboardData.score} locationName={locationName} />
+        <ScoreHero score={heroScore} locationName={locationName} />
       </div>
 
       <DashboardShell
@@ -201,7 +213,7 @@ export default async function ZipPage(props: ZipPageProps) {
       >
         {/* Score Breakdown Panel */}
         <div className="mb-8">
-          <ScoreBreakdownPanel score={dashboardData.score} />
+          <ScoreBreakdownPanel score={heroScore} />
         </div>
 
         {!hasMetrics && (

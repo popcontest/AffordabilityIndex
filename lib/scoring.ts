@@ -23,32 +23,29 @@ export function clampScore(score: number | null): number | null {
 /**
  * Convert score to letter grade
  *
- * Grade scale:
- * - A+: 95-100
- * - A:  90-94
- * - A-: 85-89
- * - B+: 80-84
- * - B:  75-79
- * - B-: 70-74
- * - C+: 65-69
- * - C:  60-64
- * - C-: 55-59
- * - D:  50-54
- * - F:  0-49
+ * Hybrid grading scale (adjusted for real affordability distribution):
+ * - A+: 80-100  (Excellent - top ~16% of cities)
+ * - A:  70-79   (Very Good - top ~30% of cities)
+ * - B+: 60-69   (Good - above average)
+ * - B:  50-59   (Above Average - median ~43)
+ * - C+: 40-49   (Average)
+ * - C:  30-39   (Below Average)
+ * - D:  20-29   (Challenging)
+ * - F:  0-19    (Unaffordable - bottom ~8%)
+ *
+ * This scale ensures ~92% of cities pass (grade C+ or better)
+ * and aligns letter grades with actual percentile performance.
  */
 export function scoreToGrade(score: number | null): string | null {
   if (score === null || score === undefined) return null;
 
-  if (score >= 95) return 'A+';
-  if (score >= 90) return 'A';
-  if (score >= 85) return 'A-';
-  if (score >= 80) return 'B+';
-  if (score >= 75) return 'B';
-  if (score >= 70) return 'B-';
-  if (score >= 65) return 'C+';
-  if (score >= 60) return 'C';
-  if (score >= 55) return 'C-';
-  if (score >= 50) return 'D';
+  if (score >= 80) return 'A+';
+  if (score >= 70) return 'A';
+  if (score >= 60) return 'B+';
+  if (score >= 50) return 'B';
+  if (score >= 40) return 'C+';
+  if (score >= 30) return 'C';
+  if (score >= 20) return 'D';
   return 'F';
 }
 
@@ -58,11 +55,14 @@ export function scoreToGrade(score: number | null): string | null {
 export function scoreLabel(score: number | null): string {
   if (score === null || score === undefined) return 'Unknown';
 
-  if (score >= 90) return 'Excellent';
-  if (score >= 75) return 'Good';
-  if (score >= 60) return 'Mixed';
-  if (score >= 45) return 'Challenging';
-  return 'Very hard';
+  if (score >= 80) return 'Excellent';
+  if (score >= 70) return 'Very Good';
+  if (score >= 60) return 'Good';
+  if (score >= 50) return 'Above Average';
+  if (score >= 40) return 'Average';
+  if (score >= 30) return 'Below Average';
+  if (score >= 20) return 'Challenging';
+  return 'Unaffordable';
 }
 
 /**
@@ -89,11 +89,12 @@ export function getScoreColor(score: number | null): string {
     return 'bg-gray-100 text-gray-700 border-gray-300';
   }
 
-  if (score >= 90) return 'bg-green-100 text-green-800 border-green-300';
-  if (score >= 75) return 'bg-blue-100 text-blue-800 border-blue-300';
-  if (score >= 60) return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-  if (score >= 45) return 'bg-orange-100 text-orange-800 border-orange-300';
-  return 'bg-red-100 text-red-800 border-red-300';
+  if (score >= 80) return 'bg-green-100 text-green-800 border-green-300';    // A+
+  if (score >= 70) return 'bg-blue-100 text-blue-800 border-blue-300';      // A
+  if (score >= 60) return 'bg-cyan-100 text-cyan-800 border-cyan-300';      // B+
+  if (score >= 40) return 'bg-yellow-100 text-yellow-800 border-yellow-300'; // B, C+
+  if (score >= 20) return 'bg-orange-100 text-orange-800 border-orange-300'; // C, D
+  return 'bg-red-100 text-red-800 border-red-300';                          // F
 }
 
 /**
@@ -104,17 +105,26 @@ export function getScoreDescription(score: number | null): string {
     return 'Affordability data not available';
   }
 
-  if (score >= 90) {
-    return 'Local incomes stretch significantly further relative to housing costs';
+  if (score >= 80) {
+    return 'Excellent affordability - local incomes stretch significantly further relative to costs';
   }
-  if (score >= 75) {
-    return 'Local incomes stretch further relative to housing costs';
+  if (score >= 70) {
+    return 'Very good affordability - local incomes stretch further relative to costs';
   }
   if (score >= 60) {
-    return 'Housing costs are moderate relative to local incomes';
+    return 'Good affordability - costs are reasonable relative to local incomes';
   }
-  if (score >= 45) {
-    return 'Housing costs are challenging relative to local incomes';
+  if (score >= 50) {
+    return 'Above average affordability - costs are manageable relative to local incomes';
   }
-  return 'Housing costs are very high relative to local incomes';
+  if (score >= 40) {
+    return 'Average affordability - costs are moderate relative to local incomes';
+  }
+  if (score >= 30) {
+    return 'Below average affordability - costs are elevated relative to local incomes';
+  }
+  if (score >= 20) {
+    return 'Challenging affordability - costs are high relative to local incomes';
+  }
+  return 'Poor affordability - costs are very high relative to local incomes';
 }

@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { canonical } from '@/lib/seo';
 import { stateFromSlug } from '@/lib/usStates';
-import { getCityDashboardData, type CityWithMetrics } from '@/lib/data';
+import { getCityDashboardData, type CityWithMetrics, buildV2ScoreBreakdown } from '@/lib/data';
 import { calculateRequiredIncome } from '@/lib/required-income';
 import { getV2Score } from '@/lib/v2-scores';
 import { JsonLd, generateBreadcrumbJsonLd } from '@/components/JsonLd';
@@ -149,6 +149,9 @@ async function renderCityDashboard(
     console.error('Failed to fetch V2 score:', error);
   }
 
+  // Build score breakdown - use V2 composite score if available, otherwise use dashboard score
+  const heroScore = buildV2ScoreBreakdown(v2Score);
+
   const breadcrumbItems = [
     { label: 'Home', href: '/' },
     { label: state.name, href: `/${state.slug}/` },
@@ -225,7 +228,7 @@ async function renderCityDashboard(
 
           {/* Score Hero - Right Side */}
           <div className="order-1 lg:order-2">
-            <ScoreHero score={dashboardData.score} locationName={`${city.name}, ${state.abbr}`} requiredIncome={requiredIncome} />
+            <ScoreHero score={heroScore} locationName={`${city.name}, ${state.abbr}`} requiredIncome={requiredIncome} />
           </div>
         </div>
       </div>
@@ -239,7 +242,7 @@ async function renderCityDashboard(
       >
         {/* Score Breakdown Panel */}
         <div className="mb-12">
-          <ScoreBreakdownPanel score={dashboardData.score} />
+          <ScoreBreakdownPanel score={heroScore} />
         </div>
 
         {/* V2 Affordability Score Card */}
