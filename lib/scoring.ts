@@ -23,15 +23,19 @@ export function clampScore(score: number | null): number | null {
 /**
  * Convert score to letter grade
  *
- * Traditional grading scale with +/- modifiers aligned with percentile ranks:
- * - A+: 90-100  (Excellent - top ~10% of cities)
- * - A:  80-89   (Very Good - top ~20% of cities)
- * - A-: 70-79   (Good - top ~30% of cities)
- * - B+: 60-69   (Above Average)
- * - B:  50-59   (Average - around median)
- * - B-: 40-49   (Below Average)
- * - C+: 30-39   (Challenging)
- * - C:  20-29   (Poor)
+ * Granular grading scale with +/- modifiers aligned with percentile ranks:
+ * - A+: 95-100  (Excellent - top ~5% of cities)
+ * - A:  85-94   (Very Good - top ~15% of cities)
+ * - A-: 80-84   (Good+ - top ~20% of cities)
+ * - B+: 75-79   (Good - top ~25% of cities)
+ * - B:  65-74   (Above Average)
+ * - B-: 60-64   (Average+)
+ * - C+: 55-59   (Average)
+ * - C:  45-54   (Average-)
+ * - C-: 40-44   (Below Average)
+ * - D+: 35-39   (Challenging)
+ * - D:  25-34   (Poor)
+ * - D-: 20-24   (Very Poor)
  * - F:  0-19    (Unaffordable)
  *
  * Since scores are percentile ranks, a score of 85 means the location is
@@ -40,14 +44,18 @@ export function clampScore(score: number | null): number | null {
 export function scoreToGrade(score: number | null): string | null {
   if (score === null || score === undefined) return null;
 
-  if (score >= 90) return 'A+';
-  if (score >= 80) return 'A';
-  if (score >= 70) return 'A-';
-  if (score >= 60) return 'B+';
-  if (score >= 50) return 'B';
-  if (score >= 40) return 'B-';
-  if (score >= 30) return 'C+';
-  if (score >= 20) return 'C';
+  if (score >= 95) return 'A+';
+  if (score >= 85) return 'A';
+  if (score >= 80) return 'A-';
+  if (score >= 75) return 'B+';
+  if (score >= 65) return 'B';
+  if (score >= 60) return 'B-';
+  if (score >= 55) return 'C+';
+  if (score >= 45) return 'C';
+  if (score >= 40) return 'C-';
+  if (score >= 35) return 'D+';
+  if (score >= 25) return 'D';
+  if (score >= 20) return 'D-';
   return 'F';
 }
 
@@ -57,13 +65,14 @@ export function scoreToGrade(score: number | null): string | null {
 export function scoreLabel(score: number | null): string {
   if (score === null || score === undefined) return 'Unknown';
 
-  if (score >= 90) return 'Excellent';
-  if (score >= 80) return 'Very Good';
-  if (score >= 70) return 'Good';
-  if (score >= 60) return 'Above Average';
-  if (score >= 50) return 'Average';
-  if (score >= 40) return 'Below Average';
-  if (score >= 30) return 'Challenging';
+  if (score >= 95) return 'Excellent';
+  if (score >= 85) return 'Very Good';
+  if (score >= 75) return 'Good';
+  if (score >= 65) return 'Above Average';
+  if (score >= 55) return 'Average';
+  if (score >= 45) return 'Moderate';
+  if (score >= 35) return 'Below Average';
+  if (score >= 25) return 'Challenging';
   if (score >= 20) return 'Poor';
   return 'Unaffordable';
 }
@@ -92,12 +101,14 @@ export function getScoreColor(score: number | null): string {
     return 'bg-gray-100 text-gray-700 border-gray-300';
   }
 
-  if (score >= 90) return 'bg-green-100 text-green-800 border-green-300';    // A+
-  if (score >= 80) return 'bg-blue-100 text-blue-800 border-blue-300';       // A
-  if (score >= 70) return 'bg-cyan-100 text-cyan-800 border-cyan-300';       // A-
-  if (score >= 60) return 'bg-teal-100 text-teal-800 border-teal-300';       // B+
-  if (score >= 40) return 'bg-yellow-100 text-yellow-800 border-yellow-300'; // B, B-
-  if (score >= 20) return 'bg-orange-100 text-orange-800 border-orange-300'; // C+, C
+  if (score >= 95) return 'bg-green-100 text-green-800 border-green-300';    // A+
+  if (score >= 85) return 'bg-blue-100 text-blue-800 border-blue-300';       // A
+  if (score >= 80) return 'bg-cyan-100 text-cyan-800 border-cyan-300';       // A-
+  if (score >= 75) return 'bg-teal-100 text-teal-800 border-teal-300';       // B+
+  if (score >= 60) return 'bg-yellow-100 text-yellow-800 border-yellow-300'; // B, B-
+  if (score >= 45) return 'bg-amber-100 text-amber-800 border-amber-300';    // C+, C
+  if (score >= 25) return 'bg-orange-100 text-orange-800 border-orange-300'; // C-, D+, D
+  if (score >= 20) return 'bg-rose-100 text-rose-800 border-rose-300';       // D-
   return 'bg-red-100 text-red-800 border-red-300';                           // F
 }
 
@@ -109,25 +120,28 @@ export function getScoreDescription(score: number | null): string {
     return 'Affordability data not available';
   }
 
-  if (score >= 90) {
+  if (score >= 95) {
     return 'Excellent affordability - local incomes stretch significantly further relative to costs';
   }
-  if (score >= 80) {
+  if (score >= 85) {
     return 'Very good affordability - local incomes stretch further relative to costs';
   }
-  if (score >= 70) {
+  if (score >= 75) {
     return 'Good affordability - costs are reasonable relative to local incomes';
   }
-  if (score >= 60) {
+  if (score >= 65) {
     return 'Above average affordability - costs are manageable relative to local incomes';
   }
-  if (score >= 50) {
+  if (score >= 55) {
     return 'Average affordability - costs are moderate relative to local incomes';
   }
-  if (score >= 40) {
+  if (score >= 45) {
+    return 'Moderate affordability - costs are somewhat elevated relative to local incomes';
+  }
+  if (score >= 35) {
     return 'Below average affordability - costs are elevated relative to local incomes';
   }
-  if (score >= 30) {
+  if (score >= 25) {
     return 'Challenging affordability - costs are high relative to local incomes';
   }
   if (score >= 20) {
