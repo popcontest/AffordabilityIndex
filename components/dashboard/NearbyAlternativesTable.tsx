@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { DataTableClient, ColumnConfig } from './DataTableClient';
+import { formatScore, scoreToGrade } from '@/lib/scoring';
 
 interface NearbyRow {
   label: string;
@@ -9,6 +10,7 @@ interface NearbyRow {
   ratio: number | null;
   homeValue: number | null;
   income: number | null;
+  affordabilityPercentile?: number | null;
   asOfDate?: Date;
 }
 
@@ -45,6 +47,22 @@ export function NearbyAlternativesTable({ betterRows, worseRows }: NearbyAlterna
           {val}
         </Link>
       ),
+    },
+    {
+      key: 'affordabilityPercentile',
+      label: 'Score',
+      align: 'center',
+      format: (val) => {
+        if (val === null || val === undefined) return '—';
+        const score = Math.round(val);
+        const grade = scoreToGrade(score);
+        return (
+          <div className="flex items-center justify-center gap-2">
+            <span className="font-semibold text-gray-900">{formatScore(score)}</span>
+            {grade && <span className="text-xs text-gray-500">({grade})</span>}
+          </div>
+        );
+      },
     },
     {
       key: 'homeValue',

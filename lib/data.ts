@@ -1718,6 +1718,7 @@ async function getCityNearbyBetter(
     ratio: c.metrics?.ratio ?? null,
     homeValue: c.metrics?.homeValue ?? null,
     income: c.metrics?.income ?? null,
+    affordabilityPercentile: c.metrics?.affordabilityPercentile ?? null,
     asOfDate: c.metrics?.asOfDate,
   }));
 }
@@ -1754,6 +1755,7 @@ async function getCityNearbyWorse(
     ratio: c.metrics?.ratio ?? null,
     homeValue: c.metrics?.homeValue ?? null,
     income: c.metrics?.income ?? null,
+    affordabilityPercentile: c.metrics?.affordabilityPercentile ?? null,
     asOfDate: c.metrics?.asOfDate,
   }));
 }
@@ -1824,6 +1826,7 @@ async function getZipNearbyBetter(zcta: ZctaWithMetrics): Promise<NearbyRow[]> {
     ratio: z.metrics?.ratio ?? null,
     homeValue: z.metrics?.homeValue ?? null,
     income: z.metrics?.income ?? null,
+    affordabilityPercentile: z.metrics?.affordabilityPercentile ?? null,
     asOfDate: z.metrics?.asOfDate,
   }));
 }
@@ -1873,6 +1876,7 @@ async function getZipNearbyWorse(zcta: ZctaWithMetrics): Promise<NearbyRow[]> {
     ratio: z.metrics?.ratio ?? null,
     homeValue: z.metrics?.homeValue ?? null,
     income: z.metrics?.income ?? null,
+    affordabilityPercentile: z.metrics?.affordabilityPercentile ?? null,
     asOfDate: z.metrics?.asOfDate,
   }));
 }
