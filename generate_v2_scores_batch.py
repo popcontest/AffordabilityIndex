@@ -48,12 +48,15 @@ def create_v2_scores_table(conn):
             "geoId" VARCHAR(16) NOT NULL,
 
             -- Component scores (0-100, higher = more affordable)
+            -- Each component score is a percentile rank (0-100)
             "housingScore" DOUBLE PRECISION,
             "colScore" DOUBLE PRECISION,
             "taxScore" DOUBLE PRECISION,
             "qolScore" DOUBLE PRECISION,
 
-            -- Composite score (weighted average)
+            -- Composite score (PERCENTILE RANK 0-100, higher = more affordable)
+            -- This is the percentile rank of the weighted composite across all geographies
+            -- A score of 75 means more affordable than 75% of all locations
             "compositeScore" DOUBLE PRECISION NOT NULL,
 
             -- Raw ratios for debugging/analysis
@@ -489,6 +492,42 @@ def store_v2_scores(conn, records):
     print(f"  Successfully stored {len(records):,} scores\n")
 
 
+def normalize_composite_scores(conn):
+    """
+    Recalculate composite scores as percentile ranks to achieve uniform 0-100 distribution
+
+    This ensures that:
+    - Median score is exactly 50
+    - Each 10-point bucket has approximately 10% of geographies
+    - Score interpretation is intuitive: 75 = better than 75% of locations
+    """
+    print("Normalizing composite scores to percentile ranks...")
+
+    cur = conn.cursor()
+
+    # Store the weighted composite in a temp column, then calculate percentile rank
+    # Higher raw composite = more affordable = higher percentile rank
+    cur.execute("""
+        WITH ranked AS (
+            SELECT
+                id,
+                "compositeScore" AS raw_composite,
+                PERCENT_RANK() OVER (ORDER BY "compositeScore") * 100 AS percentile_score
+            FROM v2_affordability_score
+        )
+        UPDATE v2_affordability_score v2
+        SET "compositeScore" = r.percentile_score
+        FROM ranked r
+        WHERE v2.id = r.id
+    """)
+
+    rows_updated = cur.rowcount
+    conn.commit()
+    cur.close()
+
+    print(f"  Normalized {rows_updated:,} composite scores to percentile ranks\n")
+
+
 def main():
     """Main execution"""
 
@@ -512,6 +551,9 @@ def main():
 
     # Store to database
     store_v2_scores(conn, records)
+
+    # Normalize composite scores to percentile ranks (0-100 uniform distribution)
+    normalize_composite_scores(conn)
 
     conn.close()
 
