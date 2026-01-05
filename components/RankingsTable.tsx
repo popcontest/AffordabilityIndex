@@ -5,6 +5,7 @@ import { useState } from 'react';
 import type { CityWithMetrics } from '../lib/data';
 import { PercentileBadge } from './PercentileBadge';
 import { stateFromAbbr } from '../lib/usStates';
+import { getAffordabilityScore } from '../lib/scoring';
 
 type SortColumn = 'rank' | 'city' | 'ratio' | 'population';
 type SortDirection = 'asc' | 'desc';
@@ -39,9 +40,11 @@ export function RankingsTable({ cities, title, description }: RankingsTableProps
       case 'city':
         return multiplier * a.name.localeCompare(b.name);
       case 'ratio':
-        const ratioA = a.metrics?.ratio ?? Infinity;
-        const ratioB = b.metrics?.ratio ?? Infinity;
-        return multiplier * (ratioA - ratioB);
+        // Use V2 composite score with fallback to V1-derived score
+        const scoreA = getAffordabilityScore(a.metrics);
+        const scoreB = getAffordabilityScore(b.metrics);
+        // Higher score = more affordable, so reverse for DESC sorting
+        return multiplier * (scoreB - scoreA);
       case 'population':
         return multiplier * ((a.population ?? 0) - (b.population ?? 0));
       default:

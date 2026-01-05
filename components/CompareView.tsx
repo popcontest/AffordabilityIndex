@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { formatCurrency, formatRatio } from '@/lib/viewModels';
 import { PercentileBadge } from './PercentileBadge';
 import { estimateAffordabilityPercentile } from '@/lib/percentile';
+import { getAffordabilityScore } from '@/lib/scoring';
 
 interface LocationData {
   type: 'city' | 'zip';
@@ -95,9 +96,12 @@ export function CompareView() {
 
   // Find winner for each metric (memoized to prevent recalculation on every render)
   const winners = useMemo(() => ({
-    ratio: locations.reduce((best, loc, i) =>
-      !loc.ratio ? best : (!best.ratio || loc.ratio < best.ratio) ? { ...loc, index: i } : best
-    , {} as LocationData & { index: number }),
+    ratio: locations.reduce((best, loc, i) => {
+      const currentScore = getAffordabilityScore(loc);
+      const bestScore = getAffordabilityScore(best);
+      // Higher score = more affordable = winner
+      return currentScore > bestScore ? { ...loc, index: i } : best;
+    }, locations[0] ? { ...locations[0], index: 0 } : { index: -1 } as LocationData & { index: number }),
     homeValue: locations.reduce((best, loc, i) =>
       !loc.homeValue ? best : (!best.homeValue || loc.homeValue < best.homeValue) ? { ...loc, index: i } : best
     , {} as LocationData & { index: number }),

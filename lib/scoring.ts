@@ -128,3 +128,34 @@ export function getScoreDescription(score: number | null): string {
   }
   return 'Poor affordability - costs are very high relative to local incomes';
 }
+
+/**
+ * Get affordability score from metrics with consistent fallback logic
+ *
+ * Prioritizes V2 composite score when available, falls back to V1 percentile
+ * derived from ratio. This ensures consistent scoring across all components.
+ *
+ * @param metrics - Object containing affordabilityPercentile (V2) and/or ratio (V1)
+ * @returns Affordability score (0-100, higher = more affordable) or -Infinity if no data
+ */
+export function getAffordabilityScore(metrics: {
+  affordabilityPercentile?: number | null;
+  ratio?: number | null;
+} | null | undefined): number {
+  if (!metrics) return -Infinity;
+
+  // Use V2 composite score if available
+  if (metrics.affordabilityPercentile !== null &&
+      metrics.affordabilityPercentile !== undefined) {
+    return metrics.affordabilityPercentile;
+  }
+
+  // Fallback: derive from V1 ratio (lower ratio = higher affordability)
+  // Convert ratio to percentile-like score: ratio of 20 → score of 80
+  if (metrics.ratio !== null && metrics.ratio !== undefined) {
+    return 100 - metrics.ratio;
+  }
+
+  // No data available
+  return -Infinity;
+}

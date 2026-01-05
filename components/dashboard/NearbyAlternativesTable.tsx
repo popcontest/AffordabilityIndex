@@ -72,7 +72,7 @@ export function NearbyAlternativesTable({ betterRows, worseRows }: NearbyAlterna
       <div>
         <h3 className="text-sm font-semibold text-gray-900 mb-3">More Affordable Nearby</h3>
         {betterRows.length > 0 ? (
-          <DataTableClient columns={columns} rows={betterRows} defaultSortKey="ratio" defaultSortDir="asc" />
+          <DataTableClient columns={columns} rows={betterRows} />
         ) : (
           <div className="text-center py-6 text-sm text-gray-500 bg-gray-50 rounded-lg border border-gray-200">
             No more-affordable cities found in this state. This location is already among the most affordable.
@@ -84,7 +84,7 @@ export function NearbyAlternativesTable({ betterRows, worseRows }: NearbyAlterna
       <div>
         <h3 className="text-sm font-semibold text-gray-900 mb-3">Less Affordable Nearby</h3>
         {worseRows.length > 0 ? (
-          <DataTableClient columns={columns} rows={worseRows} defaultSortKey="ratio" defaultSortDir="desc" />
+          <DataTableClient columns={columns} rows={worseRows} />
         ) : (
           <div className="text-center py-6 text-sm text-gray-500 bg-gray-50 rounded-lg border border-gray-200">
             No less-affordable cities found in this state.

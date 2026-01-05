@@ -8,6 +8,7 @@ import { AffordabilityBadge } from './AffordabilityBadge';
 import { AffordabilityBarCompact } from './AffordabilityBar';
 import { formatRatioPlain, getAffordabilityLevel } from '@/lib/affordabilityLabels';
 import { stateFromAbbr } from '@/lib/usStates';
+import { getAffordabilityScore } from '@/lib/scoring';
 
 interface CityRanking {
   cityId: string;
@@ -213,18 +214,18 @@ export function RankingsGrid({
 
     // Sort cities
     switch (sortBy) {
-      case 'ratio-asc':
+      case 'ratio-asc': // Most affordable first
         filtered.sort((a, b) => {
-          const ratioA = a.metrics?.ratio ?? Infinity;
-          const ratioB = b.metrics?.ratio ?? Infinity;
-          return ratioA - ratioB;
+          const scoreA = getAffordabilityScore(a.metrics);
+          const scoreB = getAffordabilityScore(b.metrics);
+          return scoreB - scoreA; // DESC: higher score = more affordable
         });
         break;
-      case 'ratio-desc':
+      case 'ratio-desc': // Least affordable first
         filtered.sort((a, b) => {
-          const ratioA = a.metrics?.ratio ?? -Infinity;
-          const ratioB = b.metrics?.ratio ?? -Infinity;
-          return ratioB - ratioA;
+          const scoreA = getAffordabilityScore(a.metrics);
+          const scoreB = getAffordabilityScore(b.metrics);
+          return scoreA - scoreB; // ASC: lower score = less affordable
         });
         break;
       case 'name':
