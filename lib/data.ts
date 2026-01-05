@@ -590,11 +590,27 @@ export async function getLatestSnapshot(
     return null;
   }
 
+  // Fetch V2 composite score if available
+  const v2Score = await prisma.v2AffordabilityScore.findUnique({
+    where: {
+      geoType_geoId: {
+        geoType,
+        geoId,
+      },
+    },
+    select: {
+      compositeScore: true,
+    },
+  });
+
   // Calculate earning power (inverse of ratio)
   const earningPower =
     snapshot.homeValue && snapshot.homeValue > 0
       ? (snapshot.income || 0) / snapshot.homeValue
       : null;
+
+  // Calculate affordability percentile: V2 composite if available, else derive from ratio
+  const affordabilityPercentile = v2Score?.compositeScore ?? null;
 
   return {
     homeValue: snapshot.homeValue,
@@ -603,6 +619,7 @@ export async function getLatestSnapshot(
     earningPower,
     asOfDate: snapshot.asOfDate,
     sources: snapshot.sources,
+    affordabilityPercentile,
   };
 }
 
@@ -678,11 +695,18 @@ export async function getStateTopPlaces(
     }
   }
 
-  // Sort by ratio
+  // Sort by affordability score (V2 composite if available, else fallback to ratio)
   placesWithMetrics.sort((a, b) => {
-    const aRatio = a.metrics?.ratio ?? Infinity;
-    const bRatio = b.metrics?.ratio ?? Infinity;
-    return mostAffordable ? aRatio - bRatio : bRatio - aRatio;
+    // Use V2 composite score if available, otherwise derive from ratio
+    const aScore = a.metrics?.affordabilityPercentile ??
+      (a.metrics?.ratio !== null && a.metrics?.ratio !== undefined ?
+        (100 - a.metrics.ratio) : -Infinity);
+    const bScore = b.metrics?.affordabilityPercentile ??
+      (b.metrics?.ratio !== null && b.metrics?.ratio !== undefined ?
+        (100 - b.metrics.ratio) : -Infinity);
+
+    // Higher score = more affordable, so DESC for mostAffordable
+    return mostAffordable ? bScore - aScore : aScore - bScore;
   });
 
   return placesWithMetrics.slice(0, limit);
@@ -704,8 +728,8 @@ export async function getStateTopZips(
 ): Promise<ZctaWithMetrics[]> {
   const where = stateAbbr ? { stateAbbr: stateAbbr.toUpperCase() } : {};
 
-  // Get all ZCTAs in the state and their latest snapshots in parallel
-  const [zctas, snapshots] = await Promise.all([
+  // Get all ZCTAs in the state, their latest snapshots, and V2 scores in parallel
+  const [zctas, snapshots, v2Scores] = await Promise.all([
     prisma.geoZcta.findMany({
       where,
     }),
@@ -720,6 +744,15 @@ export async function getStateTopZips(
         asOfDate: 'desc',
       },
     }),
+    prisma.v2AffordabilityScore.findMany({
+      where: {
+        geoType: 'ZCTA',
+      },
+      select: {
+        geoId: true,
+        compositeScore: true,
+      },
+    }),
   ]);
 
   // Create map of latest snapshot per ZCTA
@@ -728,6 +761,12 @@ export async function getStateTopZips(
     if (!latestByZcta.has(snapshot.geoId)) {
       latestByZcta.set(snapshot.geoId, snapshot);
     }
+  }
+
+  // Create map of V2 scores per ZCTA
+  const v2ScoreByZcta = new Map<string, number>();
+  for (const score of v2Scores) {
+    v2ScoreByZcta.set(score.geoId, score.compositeScore);
   }
 
   // Combine ZCTA data with metrics (only ZCTAs in this state/area with valid metrics)
@@ -739,6 +778,8 @@ export async function getStateTopZips(
         snapshot.homeValue && snapshot.homeValue > 0
           ? (snapshot.income || 0) / snapshot.homeValue
           : null;
+
+      const affordabilityPercentile = v2ScoreByZcta.get(zcta.zcta) ?? null;
 
       zctasWithMetrics.push({
         zcta: zcta.zcta,
@@ -756,16 +797,24 @@ export async function getStateTopZips(
           earningPower,
           asOfDate: snapshot.asOfDate,
           sources: snapshot.sources,
+          affordabilityPercentile,
         },
       });
     }
   }
 
-  // Sort by ratio
+  // Sort by affordability score (V2 composite if available, else fallback to ratio)
   zctasWithMetrics.sort((a, b) => {
-    const aRatio = a.metrics?.ratio ?? Infinity;
-    const bRatio = b.metrics?.ratio ?? Infinity;
-    return mostAffordable ? aRatio - bRatio : bRatio - aRatio;
+    // Use V2 composite score if available, otherwise derive from ratio
+    const aScore = a.metrics?.affordabilityPercentile ??
+      (a.metrics?.ratio !== null && a.metrics?.ratio !== undefined ?
+        (100 - a.metrics.ratio) : -Infinity);
+    const bScore = b.metrics?.affordabilityPercentile ??
+      (b.metrics?.ratio !== null && b.metrics?.ratio !== undefined ?
+        (100 - b.metrics.ratio) : -Infinity);
+
+    // Higher score = more affordable, so DESC for mostAffordable
+    return mostAffordable ? bScore - aScore : aScore - bScore;
   });
 
   return zctasWithMetrics.slice(0, limit);
@@ -785,8 +834,8 @@ export async function getStateTopCities(
   limit: number = 20,
   mostAffordable: boolean = true
 ): Promise<CityWithMetrics[]> {
-  // Get all cities in the state and their latest snapshots in parallel
-  const [cities, snapshots] = await Promise.all([
+  // Get all cities in the state, their latest snapshots, and V2 scores in parallel
+  const [cities, snapshots, v2Scores] = await Promise.all([
     prisma.geoCity.findMany({
       where: {
         stateAbbr: stateAbbr.toUpperCase(),
@@ -803,6 +852,15 @@ export async function getStateTopCities(
         asOfDate: 'desc',
       },
     }),
+    prisma.v2AffordabilityScore.findMany({
+      where: {
+        geoType: 'CITY',
+      },
+      select: {
+        geoId: true,
+        compositeScore: true,
+      },
+    }),
   ]);
 
   // Create map of latest snapshot per city
@@ -811,6 +869,12 @@ export async function getStateTopCities(
     if (!latestByCityId.has(snapshot.geoId)) {
       latestByCityId.set(snapshot.geoId, snapshot);
     }
+  }
+
+  // Create map of V2 scores per city
+  const v2ScoreByCityId = new Map<string, number>();
+  for (const score of v2Scores) {
+    v2ScoreByCityId.set(score.geoId, score.compositeScore);
   }
 
   // Combine city data with metrics (only cities in this state with valid metrics)
@@ -822,6 +886,8 @@ export async function getStateTopCities(
         snapshot.homeValue && snapshot.homeValue > 0
           ? (snapshot.income || 0) / snapshot.homeValue
           : null;
+
+      const affordabilityPercentile = v2ScoreByCityId.get(city.cityId) ?? null;
 
       citiesWithMetrics.push({
         cityId: city.cityId,
@@ -839,16 +905,24 @@ export async function getStateTopCities(
           earningPower,
           asOfDate: snapshot.asOfDate,
           sources: snapshot.sources,
+          affordabilityPercentile,
         },
       });
     }
   }
 
-  // Sort by ratio
+  // Sort by affordability score (V2 composite if available, else fallback to ratio)
   citiesWithMetrics.sort((a, b) => {
-    const aRatio = a.metrics?.ratio ?? Infinity;
-    const bRatio = b.metrics?.ratio ?? Infinity;
-    return mostAffordable ? aRatio - bRatio : bRatio - aRatio;
+    // Use V2 composite score if available, otherwise derive from ratio
+    const aScore = a.metrics?.affordabilityPercentile ??
+      (a.metrics?.ratio !== null && a.metrics?.ratio !== undefined ?
+        (100 - a.metrics.ratio) : -Infinity);
+    const bScore = b.metrics?.affordabilityPercentile ??
+      (b.metrics?.ratio !== null && b.metrics?.ratio !== undefined ?
+        (100 - b.metrics.ratio) : -Infinity);
+
+    // Higher score = more affordable, so DESC for mostAffordable
+    return mostAffordable ? bScore - aScore : aScore - bScore;
   });
 
   return citiesWithMetrics.slice(0, limit);
@@ -1408,7 +1482,7 @@ async function getCityAffordabilityRank(cityId: string): Promise<{
 
   const stateAbbr = city.stateAbbr;
 
-  // Compute state rank using window functions
+  // Compute state rank using window functions (V2 composite scores)
   const stateResult = await prisma.$queryRaw<Array<{
     rank: number;
     total_count: number;
@@ -1422,26 +1496,38 @@ async function getCityAffordabilityRank(cityId: string): Promise<{
         AND ratio IS NOT NULL
       ORDER BY "geoType", "geoId", "asOfDate" DESC
     ),
+    v2_scores AS (
+      SELECT "geoId", "compositeScore"
+      FROM v2_affordability_score
+      WHERE "geoType" = 'CITY'
+    ),
     state_cities AS (
-      SELECT l."geoId", l.ratio
+      SELECT l."geoId", l.ratio, v2."compositeScore"
       FROM latest l
       JOIN geo_city gc ON gc."cityId" = l."geoId"
+      LEFT JOIN v2_scores v2 ON v2."geoId" = l."geoId"
       WHERE gc."stateAbbr" = ${stateAbbr}
+    ),
+    with_scores AS (
+      SELECT
+        "geoId",
+        COALESCE("compositeScore", (100 - ratio)) AS affordability_score
+      FROM state_cities
     ),
     ranked AS (
       SELECT
         "geoId",
-        dense_rank() OVER (ORDER BY ratio ASC) AS rank,
+        dense_rank() OVER (ORDER BY affordability_score DESC) AS rank,
         COUNT(*) OVER () AS total_count,
-        (1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100 AS percentile
-      FROM state_cities
+        cume_dist() OVER (ORDER BY affordability_score DESC) * 100 AS percentile
+      FROM with_scores
     )
     SELECT rank::int, total_count::int, percentile::float
     FROM ranked
     WHERE "geoId" = ${cityId};
   `;
 
-  // Compute US rank using window functions
+  // Compute US rank using window functions (V2 composite scores)
   const usResult = await prisma.$queryRaw<Array<{
     rank: number;
     total_count: number;
@@ -1455,13 +1541,29 @@ async function getCityAffordabilityRank(cityId: string): Promise<{
         AND ratio IS NOT NULL
       ORDER BY "geoType", "geoId", "asOfDate" DESC
     ),
+    v2_scores AS (
+      SELECT "geoId", "compositeScore"
+      FROM v2_affordability_score
+      WHERE "geoType" = 'CITY'
+    ),
+    scoped AS (
+      SELECT l.*, v2."compositeScore"
+      FROM latest l
+      LEFT JOIN v2_scores v2 ON v2."geoId" = l."geoId"
+    ),
+    with_scores AS (
+      SELECT
+        "geoId",
+        COALESCE("compositeScore", (100 - ratio)) AS affordability_score
+      FROM scoped
+    ),
     ranked AS (
       SELECT
         "geoId",
-        dense_rank() OVER (ORDER BY ratio ASC) AS rank,
+        dense_rank() OVER (ORDER BY affordability_score DESC) AS rank,
         COUNT(*) OVER () AS total_count,
-        (1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100 AS percentile
-      FROM latest
+        cume_dist() OVER (ORDER BY affordability_score DESC) * 100 AS percentile
+      FROM with_scores
     )
     SELECT rank::int, total_count::int, percentile::float
     FROM ranked
@@ -1491,7 +1593,7 @@ async function getZctaAffordabilityRank(zcta: string): Promise<{
   usCount: number | null;
   usPercentMoreAffordable: number | null;
 }> {
-  // Compute US rank using window functions
+  // Compute US rank using window functions (V2 composite scores)
   const usResult = await prisma.$queryRaw<Array<{
     rank: number;
     total_count: number;
@@ -1505,13 +1607,29 @@ async function getZctaAffordabilityRank(zcta: string): Promise<{
         AND ratio IS NOT NULL
       ORDER BY "geoType", "geoId", "asOfDate" DESC
     ),
+    v2_scores AS (
+      SELECT "geoId", "compositeScore"
+      FROM v2_affordability_score
+      WHERE "geoType" = 'ZCTA'
+    ),
+    scoped AS (
+      SELECT l.*, v2."compositeScore"
+      FROM latest l
+      LEFT JOIN v2_scores v2 ON v2."geoId" = l."geoId"
+    ),
+    with_scores AS (
+      SELECT
+        "geoId",
+        COALESCE("compositeScore", (100 - ratio)) AS affordability_score
+      FROM scoped
+    ),
     ranked AS (
       SELECT
         "geoId",
-        dense_rank() OVER (ORDER BY ratio ASC) AS rank,
+        dense_rank() OVER (ORDER BY affordability_score DESC) AS rank,
         COUNT(*) OVER () AS total_count,
-        (1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100 AS percentile
-      FROM latest
+        cume_dist() OVER (ORDER BY affordability_score DESC) * 100 AS percentile
+      FROM with_scores
     )
     SELECT rank::int, total_count::int, percentile::float
     FROM ranked
@@ -1569,6 +1687,7 @@ async function getCityBenchmarks(
 
 /**
  * Get nearby cities with better (lower) affordability ratio
+ * Uses V2 composite score for comparison when available, falls back to ratio
  * Prefers same county/metro if available
  */
 async function getCityNearbyBetter(
@@ -1579,14 +1698,18 @@ async function getCityNearbyBetter(
     return [];
   }
 
-  const currentRatio = city.metrics.ratio;
+  const currentScore = city.metrics.affordabilityPercentile ?? (100 - city.metrics.ratio);
 
   // Get all cities in same state with valid ratio
   const cities = await getStateTopCities(stateAbbr, 200, true); // Get top 200 most affordable
 
-  // Filter for better ratio (lower) and exclude current city
+  // Filter for better score (higher) and exclude current city
   const better = cities
-    .filter((c) => c.cityId !== city.cityId && c.metrics?.ratio && c.metrics.ratio < currentRatio)
+    .filter((c) => {
+      if (c.cityId === city.cityId || !c.metrics?.ratio) return false;
+      const cScore = c.metrics.affordabilityPercentile ?? (100 - c.metrics.ratio);
+      return cScore > currentScore;
+    })
     .slice(0, 10); // Limit to 10
 
   return better.map((c) => ({
@@ -1601,6 +1724,7 @@ async function getCityNearbyBetter(
 
 /**
  * Get nearby cities with worse (higher) affordability ratio
+ * Uses V2 composite score for comparison when available, falls back to ratio
  */
 async function getCityNearbyWorse(
   city: CityWithMetrics,
@@ -1610,14 +1734,18 @@ async function getCityNearbyWorse(
     return [];
   }
 
-  const currentRatio = city.metrics.ratio;
+  const currentScore = city.metrics.affordabilityPercentile ?? (100 - city.metrics.ratio);
 
   // Get all cities in same state with valid ratio
   const cities = await getStateTopCities(stateAbbr, 200, false); // Get top 200 least affordable
 
-  // Filter for worse ratio (higher) and exclude current city
+  // Filter for worse score (lower) and exclude current city
   const worse = cities
-    .filter((c) => c.cityId !== city.cityId && c.metrics?.ratio && c.metrics.ratio > currentRatio)
+    .filter((c) => {
+      if (c.cityId === city.cityId || !c.metrics?.ratio) return false;
+      const cScore = c.metrics.affordabilityPercentile ?? (100 - c.metrics.ratio);
+      return cScore < currentScore;
+    })
     .slice(0, 10); // Limit to 10
 
   return worse.map((c) => ({
@@ -1653,6 +1781,7 @@ async function getZipBenchmarks(zcta: ZctaWithMetrics): Promise<BenchmarkRow[]> 
 
 /**
  * Get nearby ZIPs with better (lower) affordability ratio
+ * Uses V2 composite score for comparison when available, falls back to ratio
  * Filters to ZIPs within 50 miles
  */
 async function getZipNearbyBetter(zcta: ZctaWithMetrics): Promise<NearbyRow[]> {
@@ -1660,16 +1789,21 @@ async function getZipNearbyBetter(zcta: ZctaWithMetrics): Promise<NearbyRow[]> {
     return [];
   }
 
-  const currentRatio = zcta.metrics.ratio;
+  const currentScore = zcta.metrics.affordabilityPercentile ?? (100 - zcta.metrics.ratio);
   const MAX_DISTANCE_MILES = 50;
 
   // Get top ZIPs in same state
   const zips = await getStateTopZips(zcta.stateAbbr, 200, true);
 
-  // Filter for better ratio (lower), exclude current ZIP, and check distance
+  // Filter for better score (higher), exclude current ZIP, and check distance
   const better = zips
     .filter((z) => {
-      if (z.zcta === zcta.zcta || !z.metrics?.ratio || z.metrics.ratio >= currentRatio) {
+      if (z.zcta === zcta.zcta || !z.metrics?.ratio) {
+        return false;
+      }
+
+      const zScore = z.metrics.affordabilityPercentile ?? (100 - z.metrics.ratio);
+      if (zScore <= currentScore) {
         return false;
       }
 
@@ -1696,6 +1830,7 @@ async function getZipNearbyBetter(zcta: ZctaWithMetrics): Promise<NearbyRow[]> {
 
 /**
  * Get nearby ZIPs with worse (higher) affordability ratio
+ * Uses V2 composite score for comparison when available, falls back to ratio
  * Filters to ZIPs within 50 miles
  */
 async function getZipNearbyWorse(zcta: ZctaWithMetrics): Promise<NearbyRow[]> {
@@ -1703,16 +1838,21 @@ async function getZipNearbyWorse(zcta: ZctaWithMetrics): Promise<NearbyRow[]> {
     return [];
   }
 
-  const currentRatio = zcta.metrics.ratio;
+  const currentScore = zcta.metrics.affordabilityPercentile ?? (100 - zcta.metrics.ratio);
   const MAX_DISTANCE_MILES = 50;
 
   // Get least affordable ZIPs in same state
   const zips = await getStateTopZips(zcta.stateAbbr, 200, false);
 
-  // Filter for worse ratio (higher), exclude current ZIP, and check distance
+  // Filter for worse score (lower), exclude current ZIP, and check distance
   const worse = zips
     .filter((z) => {
-      if (z.zcta === zcta.zcta || !z.metrics?.ratio || z.metrics.ratio <= currentRatio) {
+      if (z.zcta === zcta.zcta || !z.metrics?.ratio) {
+        return false;
+      }
+
+      const zScore = z.metrics.affordabilityPercentile ?? (100 - z.metrics.ratio);
+      if (zScore >= currentScore) {
         return false;
       }
 
@@ -1743,45 +1883,61 @@ async function getZipNearbyWorse(zcta: ZctaWithMetrics): Promise<NearbyRow[]> {
 
 /**
  * Get all ratios for cities nationwide (for percentile calculation)
- * Returns sorted array of ratios (ascending - lower is more affordable)
+ * Returns sorted array of composite scores (V2) or ratio-derived scores
+ * Higher values = more affordable (inverse of ratio)
  *
  * TODO: Cache this result with short TTL (1 hour) as it's expensive
  */
 export async function getAllCityRatiosNational(): Promise<number[]> {
-  const snapshots = await prisma.metricSnapshot.findMany({
-    where: {
-      geoType: 'CITY',
-      ratio: {
-        not: null,
+  const [snapshots, v2Scores] = await Promise.all([
+    prisma.metricSnapshot.findMany({
+      where: {
+        geoType: 'CITY',
+        ratio: {
+          not: null,
+        },
       },
-    },
-    select: {
-      geoId: true,
-      ratio: true,
-      asOfDate: true,
-    },
-    orderBy: {
-      asOfDate: 'desc',
-    },
-  });
+      select: {
+        geoId: true,
+        ratio: true,
+        asOfDate: true,
+      },
+      orderBy: {
+        asOfDate: 'desc',
+      },
+    }),
+    prisma.v2AffordabilityScore.findMany({
+      where: { geoType: 'CITY' },
+      select: { geoId: true, compositeScore: true },
+    }),
+  ]);
 
-  // Get latest ratio per city
+  // Create V2 score lookup map
+  const v2ScoreMap = new Map<string, number>();
+  for (const score of v2Scores) {
+    v2ScoreMap.set(score.geoId, score.compositeScore);
+  }
+
+  // Get latest ratio per city and compute scores
   const latestByCityId = new Map<string, number>();
   for (const snapshot of snapshots) {
     if (!latestByCityId.has(snapshot.geoId) && snapshot.ratio !== null) {
-      latestByCityId.set(snapshot.geoId, snapshot.ratio);
+      // Use V2 composite score if available, otherwise derive from ratio
+      const score = v2ScoreMap.get(snapshot.geoId) ?? (100 - snapshot.ratio);
+      latestByCityId.set(snapshot.geoId, score);
     }
   }
 
-  // Return sorted array
+  // Return sorted array (ascending - lower score = less affordable)
   return Array.from(latestByCityId.values()).sort((a, b) => a - b);
 }
 
 /**
  * Get all ratios for cities in a specific state (for state-level percentile)
+ * Returns sorted array of composite scores (V2) or ratio-derived scores
  */
 export async function getAllCityRatiosForState(stateAbbr: string): Promise<number[]> {
-  const [cities, snapshots] = await Promise.all([
+  const [cities, snapshots, v2Scores] = await Promise.all([
     prisma.geoCity.findMany({
       where: {
         stateAbbr: stateAbbr.toUpperCase(),
@@ -1806,11 +1962,21 @@ export async function getAllCityRatiosForState(stateAbbr: string): Promise<numbe
         asOfDate: 'desc',
       },
     }),
+    prisma.v2AffordabilityScore.findMany({
+      where: { geoType: 'CITY' },
+      select: { geoId: true, compositeScore: true },
+    }),
   ]);
+
+  // Create V2 score lookup map
+  const v2ScoreMap = new Map<string, number>();
+  for (const score of v2Scores) {
+    v2ScoreMap.set(score.geoId, score.compositeScore);
+  }
 
   const cityIds = new Set(cities.map((c) => c.cityId));
 
-  // Get latest ratio per city (only for cities in this state)
+  // Get latest ratio per city (only for cities in this state) and compute scores
   const latestByCityId = new Map<string, number>();
   for (const snapshot of snapshots) {
     if (
@@ -1818,7 +1984,9 @@ export async function getAllCityRatiosForState(stateAbbr: string): Promise<numbe
       !latestByCityId.has(snapshot.geoId) &&
       snapshot.ratio !== null
     ) {
-      latestByCityId.set(snapshot.geoId, snapshot.ratio);
+      // Use V2 composite score if available, otherwise derive from ratio
+      const score = v2ScoreMap.get(snapshot.geoId) ?? (100 - snapshot.ratio);
+      latestByCityId.set(snapshot.geoId, score);
     }
   }
 
@@ -1827,30 +1995,45 @@ export async function getAllCityRatiosForState(stateAbbr: string): Promise<numbe
 
 /**
  * Get all ratios for ZIPs nationwide
+ * Returns sorted array of composite scores (V2) or ratio-derived scores
  */
 export async function getAllZipRatiosNational(): Promise<number[]> {
-  const snapshots = await prisma.metricSnapshot.findMany({
-    where: {
-      geoType: 'ZCTA',
-      ratio: {
-        not: null,
+  const [snapshots, v2Scores] = await Promise.all([
+    prisma.metricSnapshot.findMany({
+      where: {
+        geoType: 'ZCTA',
+        ratio: {
+          not: null,
+        },
       },
-    },
-    select: {
-      geoId: true,
-      ratio: true,
-      asOfDate: true,
-    },
-    orderBy: {
-      asOfDate: 'desc',
-    },
-  });
+      select: {
+        geoId: true,
+        ratio: true,
+        asOfDate: true,
+      },
+      orderBy: {
+        asOfDate: 'desc',
+      },
+    }),
+    prisma.v2AffordabilityScore.findMany({
+      where: { geoType: 'ZCTA' },
+      select: { geoId: true, compositeScore: true },
+    }),
+  ]);
 
-  // Get latest ratio per ZIP
+  // Create V2 score lookup map
+  const v2ScoreMap = new Map<string, number>();
+  for (const score of v2Scores) {
+    v2ScoreMap.set(score.geoId, score.compositeScore);
+  }
+
+  // Get latest ratio per ZIP and compute scores
   const latestByZcta = new Map<string, number>();
   for (const snapshot of snapshots) {
     if (!latestByZcta.has(snapshot.geoId) && snapshot.ratio !== null) {
-      latestByZcta.set(snapshot.geoId, snapshot.ratio);
+      // Use V2 composite score if available, otherwise derive from ratio
+      const score = v2ScoreMap.get(snapshot.geoId) ?? (100 - snapshot.ratio);
+      latestByZcta.set(snapshot.geoId, score);
     }
   }
 
@@ -1859,9 +2042,10 @@ export async function getAllZipRatiosNational(): Promise<number[]> {
 
 /**
  * Get all ratios for ZIPs in a specific state
+ * Returns sorted array of composite scores (V2) or ratio-derived scores
  */
 export async function getAllZipRatiosForState(stateAbbr: string): Promise<number[]> {
-  const [zctas, snapshots] = await Promise.all([
+  const [zctas, snapshots, v2Scores] = await Promise.all([
     prisma.geoZcta.findMany({
       where: {
         stateAbbr: stateAbbr.toUpperCase(),
@@ -1886,11 +2070,21 @@ export async function getAllZipRatiosForState(stateAbbr: string): Promise<number
         asOfDate: 'desc',
       },
     }),
+    prisma.v2AffordabilityScore.findMany({
+      where: { geoType: 'ZCTA' },
+      select: { geoId: true, compositeScore: true },
+    }),
   ]);
+
+  // Create V2 score lookup map
+  const v2ScoreMap = new Map<string, number>();
+  for (const score of v2Scores) {
+    v2ScoreMap.set(score.geoId, score.compositeScore);
+  }
 
   const zctaCodes = new Set(zctas.map((z) => z.zcta));
 
-  // Get latest ratio per ZIP (only for ZIPs in this state)
+  // Get latest ratio per ZIP (only for ZIPs in this state) and compute scores
   const latestByZcta = new Map<string, number>();
   for (const snapshot of snapshots) {
     if (
@@ -1898,7 +2092,9 @@ export async function getAllZipRatiosForState(stateAbbr: string): Promise<number
       !latestByZcta.has(snapshot.geoId) &&
       snapshot.ratio !== null
     ) {
-      latestByZcta.set(snapshot.geoId, snapshot.ratio);
+      // Use V2 composite score if available, otherwise derive from ratio
+      const score = v2ScoreMap.get(snapshot.geoId) ?? (100 - snapshot.ratio);
+      latestByZcta.set(snapshot.geoId, score);
     }
   }
 
@@ -1921,25 +2117,37 @@ export async function getNationalTopCities(
   limit: number = 25,
   mostAffordable: boolean = true
 ): Promise<CityWithMetrics[]> {
-  // Get recent snapshots for all cities with complete data
-  const snapshots = await prisma.metricSnapshot.findMany({
-    where: {
-      geoType: 'CITY',
-      ratio: {
-        not: null,
+  // Get recent snapshots for all cities with complete data and V2 scores in parallel
+  const [snapshots, v2Scores] = await Promise.all([
+    prisma.metricSnapshot.findMany({
+      where: {
+        geoType: 'CITY',
+        ratio: {
+          not: null,
+        },
+        homeValue: {
+          not: null,
+        },
+        income: {
+          not: null,
+        },
       },
-      homeValue: {
-        not: null,
+      orderBy: {
+        asOfDate: 'desc',
       },
-      income: {
-        not: null,
-      },
-    },
-    orderBy: {
-      asOfDate: 'desc',
-    },
-    take: 5000, // Get top 5000 to ensure we have enough
-  });
+      take: 5000, // Get top 5000 to ensure we have enough
+    }),
+    prisma.v2AffordabilityScore.findMany({
+      where: { geoType: 'CITY' },
+      select: { geoId: true, compositeScore: true },
+    }),
+  ]);
+
+  // Create V2 score lookup map
+  const v2ScoreMap = new Map<string, number>();
+  for (const score of v2Scores) {
+    v2ScoreMap.set(score.geoId, score.compositeScore);
+  }
 
   // Get unique cities (latest snapshot per city)
   const latestByCityId = new Map<string, typeof snapshots[0]>();
@@ -1959,7 +2167,7 @@ export async function getNationalTopCities(
     },
   });
 
-  // Combine city data with metrics
+  // Combine city data with metrics and V2 scores
   const citiesWithMetrics: CityWithMetrics[] = cities.map((city) => {
     const snapshot = latestByCityId.get(city.cityId)!;
     const earningPower =
@@ -1983,15 +2191,16 @@ export async function getNationalTopCities(
         earningPower,
         asOfDate: snapshot.asOfDate,
         sources: snapshot.sources,
+        affordabilityPercentile: v2ScoreMap.get(city.cityId) ?? null,
       },
     };
   });
 
-  // Sort by ratio
+  // Sort by composite score (V2) or fallback to ratio-based score
   citiesWithMetrics.sort((a, b) => {
-    const aRatio = a.metrics?.ratio ?? Infinity;
-    const bRatio = b.metrics?.ratio ?? Infinity;
-    return mostAffordable ? aRatio - bRatio : bRatio - aRatio;
+    const aScore = a.metrics?.affordabilityPercentile ?? (100 - (a.metrics?.ratio ?? Infinity));
+    const bScore = b.metrics?.affordabilityPercentile ?? (100 - (b.metrics?.ratio ?? Infinity));
+    return mostAffordable ? bScore - aScore : aScore - bScore;
   });
 
   return citiesWithMetrics.slice(0, limit);
@@ -2014,19 +2223,32 @@ export async function getNationalLargeCitiesAffordable(limit: number = 12): Prom
       WHERE "geoType" = 'CITY' AND ratio IS NOT NULL AND "homeValue" IS NOT NULL AND income IS NOT NULL
       ORDER BY "geoType", "geoId", "asOfDate" DESC
     ),
+    v2_scores AS (
+      SELECT "geoId", "compositeScore"
+      FROM v2_affordability_score
+      WHERE "geoType" = 'CITY'
+    ),
     scoped AS (
       SELECT gc."cityId", gc.name, gc."stateAbbr", gc."stateName", gc."countyName",
-        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources
-      FROM latest l JOIN geo_city gc ON gc."cityId" = l."geoId"
+        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources,
+        v2."compositeScore"
+      FROM latest l
+      JOIN geo_city gc ON gc."cityId" = l."geoId"
+      LEFT JOIN v2_scores v2 ON v2."geoId" = gc."cityId"
       WHERE ${Prisma.raw(BUCKET_WHERE.LARGE_CITY)}
+    ),
+    with_scores AS (
+      SELECT *,
+        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS v1_percentile
+      FROM scoped
     ),
     ranked AS (
       SELECT *,
-        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS "affordabilityPercentile"
-      FROM scoped
+        COALESCE("compositeScore", v1_percentile) AS "affordabilityPercentile"
+      FROM with_scores
     )
     SELECT * FROM ranked
-    ORDER BY ratio ASC LIMIT ${limit};
+    ORDER BY COALESCE("compositeScore", v1_percentile) DESC LIMIT ${limit};
   `;
 
   return data.map((row) => ({
@@ -2058,19 +2280,32 @@ export async function getNationalLargeCitiesExpensive(limit: number = 12): Promi
       WHERE "geoType" = 'CITY' AND ratio IS NOT NULL AND "homeValue" IS NOT NULL AND income IS NOT NULL
       ORDER BY "geoType", "geoId", "asOfDate" DESC
     ),
+    v2_scores AS (
+      SELECT "geoId", "compositeScore"
+      FROM v2_affordability_score
+      WHERE "geoType" = 'CITY'
+    ),
     scoped AS (
       SELECT gc."cityId", gc.name, gc."stateAbbr", gc."stateName", gc."countyName",
-        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources
-      FROM latest l JOIN geo_city gc ON gc."cityId" = l."geoId"
+        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources,
+        v2."compositeScore"
+      FROM latest l
+      JOIN geo_city gc ON gc."cityId" = l."geoId"
+      LEFT JOIN v2_scores v2 ON v2."geoId" = gc."cityId"
       WHERE ${Prisma.raw(BUCKET_WHERE.LARGE_CITY)}
+    ),
+    with_scores AS (
+      SELECT *,
+        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS v1_percentile
+      FROM scoped
     ),
     ranked AS (
       SELECT *,
-        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS "affordabilityPercentile"
-      FROM scoped
+        COALESCE("compositeScore", v1_percentile) AS "affordabilityPercentile"
+      FROM with_scores
     )
     SELECT * FROM ranked
-    ORDER BY ratio DESC LIMIT ${limit};
+    ORDER BY COALESCE("compositeScore", v1_percentile) ASC LIMIT ${limit};
   `;
 
   return data.map((row) => ({
@@ -2102,19 +2337,32 @@ export async function getNationalCitiesAffordable(limit: number = 12): Promise<C
       WHERE "geoType" = 'CITY' AND ratio IS NOT NULL AND "homeValue" IS NOT NULL AND income IS NOT NULL
       ORDER BY "geoType", "geoId", "asOfDate" DESC
     ),
+    v2_scores AS (
+      SELECT "geoId", "compositeScore"
+      FROM v2_affordability_score
+      WHERE "geoType" = 'CITY'
+    ),
     scoped AS (
       SELECT gc."cityId", gc.name, gc."stateAbbr", gc."stateName", gc."countyName",
-        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources
-      FROM latest l JOIN geo_city gc ON gc."cityId" = l."geoId"
+        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources,
+        v2."compositeScore"
+      FROM latest l
+      JOIN geo_city gc ON gc."cityId" = l."geoId"
+      LEFT JOIN v2_scores v2 ON v2."geoId" = gc."cityId"
       WHERE ${Prisma.raw(BUCKET_WHERE.CITY)}
+    ),
+    with_scores AS (
+      SELECT *,
+        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS v1_percentile
+      FROM scoped
     ),
     ranked AS (
       SELECT *,
-        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS "affordabilityPercentile"
-      FROM scoped
+        COALESCE("compositeScore", v1_percentile) AS "affordabilityPercentile"
+      FROM with_scores
     )
     SELECT * FROM ranked
-    ORDER BY ratio ASC LIMIT ${limit};
+    ORDER BY COALESCE("compositeScore", v1_percentile) DESC LIMIT ${limit};
   `;
 
   return data.map((row) => ({
@@ -2146,19 +2394,32 @@ export async function getNationalCitiesExpensive(limit: number = 12): Promise<Ci
       WHERE "geoType" = 'CITY' AND ratio IS NOT NULL AND "homeValue" IS NOT NULL AND income IS NOT NULL
       ORDER BY "geoType", "geoId", "asOfDate" DESC
     ),
+    v2_scores AS (
+      SELECT "geoId", "compositeScore"
+      FROM v2_affordability_score
+      WHERE "geoType" = 'CITY'
+    ),
     scoped AS (
       SELECT gc."cityId", gc.name, gc."stateAbbr", gc."stateName", gc."countyName",
-        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources
-      FROM latest l JOIN geo_city gc ON gc."cityId" = l."geoId"
+        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources,
+        v2."compositeScore"
+      FROM latest l
+      JOIN geo_city gc ON gc."cityId" = l."geoId"
+      LEFT JOIN v2_scores v2 ON v2."geoId" = gc."cityId"
       WHERE ${Prisma.raw(BUCKET_WHERE.CITY)}
+    ),
+    with_scores AS (
+      SELECT *,
+        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS v1_percentile
+      FROM scoped
     ),
     ranked AS (
       SELECT *,
-        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS "affordabilityPercentile"
-      FROM scoped
+        COALESCE("compositeScore", v1_percentile) AS "affordabilityPercentile"
+      FROM with_scores
     )
     SELECT * FROM ranked
-    ORDER BY ratio DESC LIMIT ${limit};
+    ORDER BY COALESCE("compositeScore", v1_percentile) ASC LIMIT ${limit};
   `;
 
   return data.map((row) => ({
@@ -2190,19 +2451,32 @@ export async function getNationalSmallCitiesAffordable(limit: number = 12): Prom
       WHERE "geoType" = 'CITY' AND ratio IS NOT NULL AND "homeValue" IS NOT NULL AND income IS NOT NULL
       ORDER BY "geoType", "geoId", "asOfDate" DESC
     ),
+    v2_scores AS (
+      SELECT "geoId", "compositeScore"
+      FROM v2_affordability_score
+      WHERE "geoType" = 'CITY'
+    ),
     scoped AS (
       SELECT gc."cityId", gc.name, gc."stateAbbr", gc."stateName", gc."countyName",
-        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources
-      FROM latest l JOIN geo_city gc ON gc."cityId" = l."geoId"
+        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources,
+        v2."compositeScore"
+      FROM latest l
+      JOIN geo_city gc ON gc."cityId" = l."geoId"
+      LEFT JOIN v2_scores v2 ON v2."geoId" = gc."cityId"
       WHERE ${Prisma.raw(BUCKET_WHERE.SMALL_CITY)}
+    ),
+    with_scores AS (
+      SELECT *,
+        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS v1_percentile
+      FROM scoped
     ),
     ranked AS (
       SELECT *,
-        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS "affordabilityPercentile"
-      FROM scoped
+        COALESCE("compositeScore", v1_percentile) AS "affordabilityPercentile"
+      FROM with_scores
     )
     SELECT * FROM ranked
-    ORDER BY ratio ASC LIMIT ${limit};
+    ORDER BY COALESCE("compositeScore", v1_percentile) DESC LIMIT ${limit};
   `;
 
   return data.map((row) => ({
@@ -2234,19 +2508,32 @@ export async function getNationalSmallCitiesExpensive(limit: number = 12): Promi
       WHERE "geoType" = 'CITY' AND ratio IS NOT NULL AND "homeValue" IS NOT NULL AND income IS NOT NULL
       ORDER BY "geoType", "geoId", "asOfDate" DESC
     ),
+    v2_scores AS (
+      SELECT "geoId", "compositeScore"
+      FROM v2_affordability_score
+      WHERE "geoType" = 'CITY'
+    ),
     scoped AS (
       SELECT gc."cityId", gc.name, gc."stateAbbr", gc."stateName", gc."countyName",
-        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources
-      FROM latest l JOIN geo_city gc ON gc."cityId" = l."geoId"
+        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources,
+        v2."compositeScore"
+      FROM latest l
+      JOIN geo_city gc ON gc."cityId" = l."geoId"
+      LEFT JOIN v2_scores v2 ON v2."geoId" = gc."cityId"
       WHERE ${Prisma.raw(BUCKET_WHERE.SMALL_CITY)}
+    ),
+    with_scores AS (
+      SELECT *,
+        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS v1_percentile
+      FROM scoped
     ),
     ranked AS (
       SELECT *,
-        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS "affordabilityPercentile"
-      FROM scoped
+        COALESCE("compositeScore", v1_percentile) AS "affordabilityPercentile"
+      FROM with_scores
     )
     SELECT * FROM ranked
-    ORDER BY ratio DESC LIMIT ${limit};
+    ORDER BY COALESCE("compositeScore", v1_percentile) ASC LIMIT ${limit};
   `;
 
   return data.map((row) => ({
@@ -2278,19 +2565,32 @@ export async function getNationalTownsAffordable(limit: number = 12): Promise<Ci
       WHERE "geoType" = 'CITY' AND ratio IS NOT NULL AND "homeValue" IS NOT NULL AND income IS NOT NULL
       ORDER BY "geoType", "geoId", "asOfDate" DESC
     ),
+    v2_scores AS (
+      SELECT "geoId", "compositeScore"
+      FROM v2_affordability_score
+      WHERE "geoType" = 'CITY'
+    ),
     scoped AS (
       SELECT gc."cityId", gc.name, gc."stateAbbr", gc."stateName", gc."countyName",
-        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources
-      FROM latest l JOIN geo_city gc ON gc."cityId" = l."geoId"
+        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources,
+        v2."compositeScore"
+      FROM latest l
+      JOIN geo_city gc ON gc."cityId" = l."geoId"
+      LEFT JOIN v2_scores v2 ON v2."geoId" = gc."cityId"
       WHERE ${Prisma.raw(BUCKET_WHERE.TOWN)}
+    ),
+    with_scores AS (
+      SELECT *,
+        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS v1_percentile
+      FROM scoped
     ),
     ranked AS (
       SELECT *,
-        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS "affordabilityPercentile"
-      FROM scoped
+        COALESCE("compositeScore", v1_percentile) AS "affordabilityPercentile"
+      FROM with_scores
     )
     SELECT * FROM ranked
-    ORDER BY ratio ASC LIMIT ${limit};
+    ORDER BY COALESCE("compositeScore", v1_percentile) DESC LIMIT ${limit};
   `;
 
   return data.map((row) => ({
@@ -2322,19 +2622,32 @@ export async function getNationalTownsExpensive(limit: number = 12): Promise<Cit
       WHERE "geoType" = 'CITY' AND ratio IS NOT NULL AND "homeValue" IS NOT NULL AND income IS NOT NULL
       ORDER BY "geoType", "geoId", "asOfDate" DESC
     ),
+    v2_scores AS (
+      SELECT "geoId", "compositeScore"
+      FROM v2_affordability_score
+      WHERE "geoType" = 'CITY'
+    ),
     scoped AS (
       SELECT gc."cityId", gc.name, gc."stateAbbr", gc."stateName", gc."countyName",
-        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources
-      FROM latest l JOIN geo_city gc ON gc."cityId" = l."geoId"
+        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources,
+        v2."compositeScore"
+      FROM latest l
+      JOIN geo_city gc ON gc."cityId" = l."geoId"
+      LEFT JOIN v2_scores v2 ON v2."geoId" = gc."cityId"
       WHERE ${Prisma.raw(BUCKET_WHERE.TOWN)}
+    ),
+    with_scores AS (
+      SELECT *,
+        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS v1_percentile
+      FROM scoped
     ),
     ranked AS (
       SELECT *,
-        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS "affordabilityPercentile"
-      FROM scoped
+        COALESCE("compositeScore", v1_percentile) AS "affordabilityPercentile"
+      FROM with_scores
     )
     SELECT * FROM ranked
-    ORDER BY ratio DESC LIMIT ${limit};
+    ORDER BY COALESCE("compositeScore", v1_percentile) ASC LIMIT ${limit};
   `;
 
   return data.map((row) => ({
@@ -2372,19 +2685,32 @@ export async function getLargeCitiesAffordable(limit: number = 100): Promise<Cit
       WHERE "geoType" = 'CITY' AND ratio IS NOT NULL AND "homeValue" IS NOT NULL AND income IS NOT NULL
       ORDER BY "geoType", "geoId", "asOfDate" DESC
     ),
+    v2_scores AS (
+      SELECT "geoId", "compositeScore"
+      FROM v2_affordability_score
+      WHERE "geoType" = 'CITY'
+    ),
     scoped AS (
       SELECT gc."cityId", gc.name, gc."stateAbbr", gc."stateName", gc."countyName",
-        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources
-      FROM latest l JOIN geo_city gc ON gc."cityId" = l."geoId"
+        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources,
+        v2."compositeScore"
+      FROM latest l
+      JOIN geo_city gc ON gc."cityId" = l."geoId"
+      LEFT JOIN v2_scores v2 ON v2."geoId" = gc."cityId"
       WHERE ${Prisma.raw(BUCKET_WHERE.LARGE_CITIES_100K)}
+    ),
+    with_scores AS (
+      SELECT *,
+        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS v1_percentile
+      FROM scoped
     ),
     ranked AS (
       SELECT *,
-        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS "affordabilityPercentile"
-      FROM scoped
+        COALESCE("compositeScore", v1_percentile) AS "affordabilityPercentile"
+      FROM with_scores
     )
     SELECT * FROM ranked
-    ORDER BY ratio ASC LIMIT ${limit};
+    ORDER BY COALESCE("compositeScore", v1_percentile) DESC LIMIT ${limit};
   `;
 
   return data.map((row) => ({
@@ -2418,19 +2744,32 @@ export async function getLargeCitiesExpensive(limit: number = 100): Promise<City
       WHERE "geoType" = 'CITY' AND ratio IS NOT NULL AND "homeValue" IS NOT NULL AND income IS NOT NULL
       ORDER BY "geoType", "geoId", "asOfDate" DESC
     ),
+    v2_scores AS (
+      SELECT "geoId", "compositeScore"
+      FROM v2_affordability_score
+      WHERE "geoType" = 'CITY'
+    ),
     scoped AS (
       SELECT gc."cityId", gc.name, gc."stateAbbr", gc."stateName", gc."countyName",
-        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources
-      FROM latest l JOIN geo_city gc ON gc."cityId" = l."geoId"
+        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources,
+        v2."compositeScore"
+      FROM latest l
+      JOIN geo_city gc ON gc."cityId" = l."geoId"
+      LEFT JOIN v2_scores v2 ON v2."geoId" = gc."cityId"
       WHERE ${Prisma.raw(BUCKET_WHERE.LARGE_CITIES_100K)}
+    ),
+    with_scores AS (
+      SELECT *,
+        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS v1_percentile
+      FROM scoped
     ),
     ranked AS (
       SELECT *,
-        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS "affordabilityPercentile"
-      FROM scoped
+        COALESCE("compositeScore", v1_percentile) AS "affordabilityPercentile"
+      FROM with_scores
     )
     SELECT * FROM ranked
-    ORDER BY ratio DESC LIMIT ${limit};
+    ORDER BY COALESCE("compositeScore", v1_percentile) ASC LIMIT ${limit};
   `;
 
   return data.map((row) => ({
@@ -2464,19 +2803,32 @@ export async function getMidSizeCitiesAffordable(limit: number = 100): Promise<C
       WHERE "geoType" = 'CITY' AND ratio IS NOT NULL AND "homeValue" IS NOT NULL AND income IS NOT NULL
       ORDER BY "geoType", "geoId", "asOfDate" DESC
     ),
+    v2_scores AS (
+      SELECT "geoId", "compositeScore"
+      FROM v2_affordability_score
+      WHERE "geoType" = 'CITY'
+    ),
     scoped AS (
       SELECT gc."cityId", gc.name, gc."stateAbbr", gc."stateName", gc."countyName",
-        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources
-      FROM latest l JOIN geo_city gc ON gc."cityId" = l."geoId"
+        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources,
+        v2."compositeScore"
+      FROM latest l
+      JOIN geo_city gc ON gc."cityId" = l."geoId"
+      LEFT JOIN v2_scores v2 ON v2."geoId" = gc."cityId"
       WHERE ${Prisma.raw(BUCKET_WHERE.MID_SIZE_CITIES)}
+    ),
+    with_scores AS (
+      SELECT *,
+        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS v1_percentile
+      FROM scoped
     ),
     ranked AS (
       SELECT *,
-        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS "affordabilityPercentile"
-      FROM scoped
+        COALESCE("compositeScore", v1_percentile) AS "affordabilityPercentile"
+      FROM with_scores
     )
     SELECT * FROM ranked
-    ORDER BY ratio ASC LIMIT ${limit};
+    ORDER BY COALESCE("compositeScore", v1_percentile) DESC LIMIT ${limit};
   `;
 
   return data.map((row) => ({
@@ -2510,19 +2862,32 @@ export async function getMidSizeCitiesExpensive(limit: number = 100): Promise<Ci
       WHERE "geoType" = 'CITY' AND ratio IS NOT NULL AND "homeValue" IS NOT NULL AND income IS NOT NULL
       ORDER BY "geoType", "geoId", "asOfDate" DESC
     ),
+    v2_scores AS (
+      SELECT "geoId", "compositeScore"
+      FROM v2_affordability_score
+      WHERE "geoType" = 'CITY'
+    ),
     scoped AS (
       SELECT gc."cityId", gc.name, gc."stateAbbr", gc."stateName", gc."countyName",
-        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources
-      FROM latest l JOIN geo_city gc ON gc."cityId" = l."geoId"
+        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources,
+        v2."compositeScore"
+      FROM latest l
+      JOIN geo_city gc ON gc."cityId" = l."geoId"
+      LEFT JOIN v2_scores v2 ON v2."geoId" = gc."cityId"
       WHERE ${Prisma.raw(BUCKET_WHERE.MID_SIZE_CITIES)}
+    ),
+    with_scores AS (
+      SELECT *,
+        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS v1_percentile
+      FROM scoped
     ),
     ranked AS (
       SELECT *,
-        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS "affordabilityPercentile"
-      FROM scoped
+        COALESCE("compositeScore", v1_percentile) AS "affordabilityPercentile"
+      FROM with_scores
     )
     SELECT * FROM ranked
-    ORDER BY ratio DESC LIMIT ${limit};
+    ORDER BY COALESCE("compositeScore", v1_percentile) ASC LIMIT ${limit};
   `;
 
   return data.map((row) => ({
@@ -2556,19 +2921,32 @@ export async function getSmallCitiesAffordable(limit: number = 100): Promise<Cit
       WHERE "geoType" = 'CITY' AND ratio IS NOT NULL AND "homeValue" IS NOT NULL AND income IS NOT NULL
       ORDER BY "geoType", "geoId", "asOfDate" DESC
     ),
+    v2_scores AS (
+      SELECT "geoId", "compositeScore"
+      FROM v2_affordability_score
+      WHERE "geoType" = 'CITY'
+    ),
     scoped AS (
       SELECT gc."cityId", gc.name, gc."stateAbbr", gc."stateName", gc."countyName",
-        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources
-      FROM latest l JOIN geo_city gc ON gc."cityId" = l."geoId"
+        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources,
+        v2."compositeScore"
+      FROM latest l
+      JOIN geo_city gc ON gc."cityId" = l."geoId"
+      LEFT JOIN v2_scores v2 ON v2."geoId" = gc."cityId"
       WHERE ${Prisma.raw(BUCKET_WHERE.SMALL_CITY)}
+    ),
+    with_scores AS (
+      SELECT *,
+        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS v1_percentile
+      FROM scoped
     ),
     ranked AS (
       SELECT *,
-        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS "affordabilityPercentile"
-      FROM scoped
+        COALESCE("compositeScore", v1_percentile) AS "affordabilityPercentile"
+      FROM with_scores
     )
     SELECT * FROM ranked
-    ORDER BY ratio ASC LIMIT ${limit};
+    ORDER BY COALESCE("compositeScore", v1_percentile) DESC LIMIT ${limit};
   `;
 
   return data.map((row) => ({
@@ -2602,19 +2980,32 @@ export async function getSmallCitiesExpensive(limit: number = 100): Promise<City
       WHERE "geoType" = 'CITY' AND ratio IS NOT NULL AND "homeValue" IS NOT NULL AND income IS NOT NULL
       ORDER BY "geoType", "geoId", "asOfDate" DESC
     ),
+    v2_scores AS (
+      SELECT "geoId", "compositeScore"
+      FROM v2_affordability_score
+      WHERE "geoType" = 'CITY'
+    ),
     scoped AS (
       SELECT gc."cityId", gc.name, gc."stateAbbr", gc."stateName", gc."countyName",
-        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources
-      FROM latest l JOIN geo_city gc ON gc."cityId" = l."geoId"
+        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources,
+        v2."compositeScore"
+      FROM latest l
+      JOIN geo_city gc ON gc."cityId" = l."geoId"
+      LEFT JOIN v2_scores v2 ON v2."geoId" = gc."cityId"
       WHERE ${Prisma.raw(BUCKET_WHERE.SMALL_CITY)}
+    ),
+    with_scores AS (
+      SELECT *,
+        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS v1_percentile
+      FROM scoped
     ),
     ranked AS (
       SELECT *,
-        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS "affordabilityPercentile"
-      FROM scoped
+        COALESCE("compositeScore", v1_percentile) AS "affordabilityPercentile"
+      FROM with_scores
     )
     SELECT * FROM ranked
-    ORDER BY ratio DESC LIMIT ${limit};
+    ORDER BY COALESCE("compositeScore", v1_percentile) ASC LIMIT ${limit};
   `;
 
   return data.map((row) => ({
@@ -2648,19 +3039,32 @@ export async function getTownsAffordable(limit: number = 100): Promise<CityWithM
       WHERE "geoType" = 'CITY' AND ratio IS NOT NULL AND "homeValue" IS NOT NULL AND income IS NOT NULL
       ORDER BY "geoType", "geoId", "asOfDate" DESC
     ),
+    v2_scores AS (
+      SELECT "geoId", "compositeScore"
+      FROM v2_affordability_score
+      WHERE "geoType" = 'CITY'
+    ),
     scoped AS (
       SELECT gc."cityId", gc.name, gc."stateAbbr", gc."stateName", gc."countyName",
-        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources
-      FROM latest l JOIN geo_city gc ON gc."cityId" = l."geoId"
+        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources,
+        v2."compositeScore"
+      FROM latest l
+      JOIN geo_city gc ON gc."cityId" = l."geoId"
+      LEFT JOIN v2_scores v2 ON v2."geoId" = gc."cityId"
       WHERE ${Prisma.raw(BUCKET_WHERE.TOWN)}
+    ),
+    with_scores AS (
+      SELECT *,
+        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS v1_percentile
+      FROM scoped
     ),
     ranked AS (
       SELECT *,
-        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS "affordabilityPercentile"
-      FROM scoped
+        COALESCE("compositeScore", v1_percentile) AS "affordabilityPercentile"
+      FROM with_scores
     )
     SELECT * FROM ranked
-    ORDER BY ratio ASC LIMIT ${limit};
+    ORDER BY COALESCE("compositeScore", v1_percentile) DESC LIMIT ${limit};
   `;
 
   return data.map((row) => ({
@@ -2694,19 +3098,32 @@ export async function getTownsExpensive(limit: number = 100): Promise<CityWithMe
       WHERE "geoType" = 'CITY' AND ratio IS NOT NULL AND "homeValue" IS NOT NULL AND income IS NOT NULL
       ORDER BY "geoType", "geoId", "asOfDate" DESC
     ),
+    v2_scores AS (
+      SELECT "geoId", "compositeScore"
+      FROM v2_affordability_score
+      WHERE "geoType" = 'CITY'
+    ),
     scoped AS (
       SELECT gc."cityId", gc.name, gc."stateAbbr", gc."stateName", gc."countyName",
-        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources
-      FROM latest l JOIN geo_city gc ON gc."cityId" = l."geoId"
+        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources,
+        v2."compositeScore"
+      FROM latest l
+      JOIN geo_city gc ON gc."cityId" = l."geoId"
+      LEFT JOIN v2_scores v2 ON v2."geoId" = gc."cityId"
       WHERE ${Prisma.raw(BUCKET_WHERE.TOWN)}
+    ),
+    with_scores AS (
+      SELECT *,
+        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS v1_percentile
+      FROM scoped
     ),
     ranked AS (
       SELECT *,
-        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS "affordabilityPercentile"
-      FROM scoped
+        COALESCE("compositeScore", v1_percentile) AS "affordabilityPercentile"
+      FROM with_scores
     )
     SELECT * FROM ranked
-    ORDER BY ratio DESC LIMIT ${limit};
+    ORDER BY COALESCE("compositeScore", v1_percentile) ASC LIMIT ${limit};
   `;
 
   return data.map((row) => ({
@@ -2731,25 +3148,37 @@ export async function getTownsExpensive(limit: number = 100): Promise<CityWithMe
 export async function getAffordableSmallTowns(
   limit: number = 6
 ): Promise<CityWithMetrics[]> {
-  // Get recent snapshots for all cities with complete data
-  const snapshots = await prisma.metricSnapshot.findMany({
-    where: {
-      geoType: 'CITY',
-      ratio: {
-        not: null,
+  // Get recent snapshots for all cities with complete data and V2 scores in parallel
+  const [snapshots, v2Scores] = await Promise.all([
+    prisma.metricSnapshot.findMany({
+      where: {
+        geoType: 'CITY',
+        ratio: {
+          not: null,
+        },
+        homeValue: {
+          not: null,
+        },
+        income: {
+          not: null,
+        },
       },
-      homeValue: {
-        not: null,
+      orderBy: {
+        asOfDate: 'desc',
       },
-      income: {
-        not: null,
-      },
-    },
-    orderBy: {
-      asOfDate: 'desc',
-    },
-    take: 5000, // Get top 5000 to ensure we have enough
-  });
+      take: 5000, // Get top 5000 to ensure we have enough
+    }),
+    prisma.v2AffordabilityScore.findMany({
+      where: { geoType: 'CITY' },
+      select: { geoId: true, compositeScore: true },
+    }),
+  ]);
+
+  // Create V2 score lookup map
+  const v2ScoreMap = new Map<string, number>();
+  for (const score of v2Scores) {
+    v2ScoreMap.set(score.geoId, score.compositeScore);
+  }
 
   // Get unique cities (latest snapshot per city)
   const latestByCityId = new Map<string, typeof snapshots[0]>();
@@ -2777,7 +3206,7 @@ export async function getAffordableSmallTowns(
     return snapshot && snapshot.homeValue && snapshot.homeValue < 250000;
   });
 
-  // Combine city data with metrics
+  // Combine city data with metrics and V2 scores
   const citiesWithMetrics: CityWithMetrics[] = affordableCities.map((city) => {
     const snapshot = latestByCityId.get(city.cityId)!;
     const earningPower =
@@ -2801,15 +3230,16 @@ export async function getAffordableSmallTowns(
         earningPower,
         asOfDate: snapshot.asOfDate,
         sources: snapshot.sources,
+        affordabilityPercentile: v2ScoreMap.get(city.cityId) ?? null,
       },
     };
   });
 
-  // Sort by best affordability (lowest ratio)
+  // Sort by best affordability using composite score (V2) or fallback to ratio-based score
   citiesWithMetrics.sort((a, b) => {
-    const aRatio = a.metrics?.ratio ?? Infinity;
-    const bRatio = b.metrics?.ratio ?? Infinity;
-    return aRatio - bRatio;
+    const aScore = a.metrics?.affordabilityPercentile ?? (100 - (a.metrics?.ratio ?? Infinity));
+    const bScore = b.metrics?.affordabilityPercentile ?? (100 - (b.metrics?.ratio ?? Infinity));
+    return bScore - aScore; // Higher score = more affordable
   });
 
   return citiesWithMetrics.slice(0, limit);
@@ -2827,25 +3257,37 @@ export async function getNationalTopZips(
   limit: number = 25,
   mostAffordable: boolean = true
 ): Promise<ZctaWithMetrics[]> {
-  // Get recent snapshots for all ZIPs with complete data
-  const snapshots = await prisma.metricSnapshot.findMany({
-    where: {
-      geoType: 'ZCTA',
-      ratio: {
-        not: null,
+  // Get recent snapshots for all ZIPs with complete data and V2 scores in parallel
+  const [snapshots, v2Scores] = await Promise.all([
+    prisma.metricSnapshot.findMany({
+      where: {
+        geoType: 'ZCTA',
+        ratio: {
+          not: null,
+        },
+        homeValue: {
+          not: null,
+        },
+        income: {
+          not: null,
+        },
       },
-      homeValue: {
-        not: null,
+      orderBy: {
+        asOfDate: 'desc',
       },
-      income: {
-        not: null,
-      },
-    },
-    orderBy: {
-      asOfDate: 'desc',
-    },
-    take: 5000, // Get top 5000 to ensure we have enough
-  });
+      take: 5000, // Get top 5000 to ensure we have enough
+    }),
+    prisma.v2AffordabilityScore.findMany({
+      where: { geoType: 'ZCTA' },
+      select: { geoId: true, compositeScore: true },
+    }),
+  ]);
+
+  // Create V2 score lookup map
+  const v2ScoreMap = new Map<string, number>();
+  for (const score of v2Scores) {
+    v2ScoreMap.set(score.geoId, score.compositeScore);
+  }
 
   // Get unique ZIPs (latest snapshot per ZIP)
   const latestByZcta = new Map<string, typeof snapshots[0]>();
@@ -2864,7 +3306,7 @@ export async function getNationalTopZips(
     },
   });
 
-  // Combine ZCTA data with metrics
+  // Combine ZCTA data with metrics and V2 scores
   const zctasWithMetrics: ZctaWithMetrics[] = zctas.map((zcta) => {
     const snapshot = latestByZcta.get(zcta.zcta)!;
     const earningPower =
@@ -2888,15 +3330,16 @@ export async function getNationalTopZips(
         earningPower,
         asOfDate: snapshot.asOfDate,
         sources: snapshot.sources,
+        affordabilityPercentile: v2ScoreMap.get(zcta.zcta) ?? null,
       },
     };
   });
 
-  // Sort by ratio
+  // Sort by composite score (V2) or fallback to ratio-based score
   zctasWithMetrics.sort((a, b) => {
-    const aRatio = a.metrics?.ratio ?? Infinity;
-    const bRatio = b.metrics?.ratio ?? Infinity;
-    return mostAffordable ? aRatio - bRatio : bRatio - aRatio;
+    const aScore = a.metrics?.affordabilityPercentile ?? (100 - (a.metrics?.ratio ?? Infinity));
+    const bScore = b.metrics?.affordabilityPercentile ?? (100 - (b.metrics?.ratio ?? Infinity));
+    return mostAffordable ? bScore - aScore : aScore - bScore;
   });
 
   return zctasWithMetrics.slice(0, limit);
@@ -2905,21 +3348,34 @@ export async function getNationalTopZips(
 /**
  * Get state ranking for a specific ZIP
  * Returns the ZIP's rank and total count within its state
+ * Uses V2 composite score when available, falls back to ratio-based score
  */
 export async function getStateRankingForZip(
   zip: string,
   stateAbbr: string
 ): Promise<{ rank: number; total: number; percentile: number } | null> {
-  // Get all ZIPs in the state with metrics
-  const snapshots = await prisma.metricSnapshot.findMany({
-    where: {
-      geoType: 'ZCTA',
-      ratio: { not: null },
-    },
-    orderBy: {
-      asOfDate: 'desc',
-    },
-  });
+  // Get all ZIPs in the state with metrics and V2 scores in parallel
+  const [snapshots, v2Scores] = await Promise.all([
+    prisma.metricSnapshot.findMany({
+      where: {
+        geoType: 'ZCTA',
+        ratio: { not: null },
+      },
+      orderBy: {
+        asOfDate: 'desc',
+      },
+    }),
+    prisma.v2AffordabilityScore.findMany({
+      where: { geoType: 'ZCTA' },
+      select: { geoId: true, compositeScore: true },
+    }),
+  ]);
+
+  // Create V2 score lookup map
+  const v2ScoreMap = new Map<string, number>();
+  for (const score of v2Scores) {
+    v2ScoreMap.set(score.geoId, score.compositeScore);
+  }
 
   // Get latest snapshot per ZIP in this state
   const zctas = await prisma.geoZcta.findMany({
@@ -2935,16 +3391,21 @@ export async function getStateRankingForZip(
     }
   }
 
-  // Get the target ZIP's ratio
+  // Get the target ZIP's snapshot
   const targetSnapshot = latestByZcta.get(zip);
   if (!targetSnapshot || !targetSnapshot.ratio) {
     return null;
   }
 
-  // Sort all ZIPs by ratio (lower is more affordable)
+  // Sort all ZIPs by composite score (V2) or fallback to ratio-based score
+  // Higher score = more affordable
   const sortedZips = Array.from(latestByZcta.entries())
-    .map(([zcta, snap]) => ({ zcta, ratio: snap.ratio! }))
-    .sort((a, b) => a.ratio - b.ratio);
+    .map(([zcta, snap]) => {
+      const v2Score = v2ScoreMap.get(zcta);
+      const score = v2Score ?? (100 - snap.ratio!);
+      return { zcta, score };
+    })
+    .sort((a, b) => b.score - a.score); // DESC: higher score = better rank
 
   // Find rank (1-indexed)
   const rank = sortedZips.findIndex((z) => z.zcta === zip) + 1;
@@ -2957,21 +3418,34 @@ export async function getStateRankingForZip(
 /**
  * Get state ranking for a specific city
  * Returns the city's rank and total count within its state
+ * Uses V2 composite score when available, falls back to ratio-based score
  */
 export async function getStateRankingForCity(
   cityId: string,
   stateAbbr: string
 ): Promise<{ rank: number; total: number; percentile: number } | null> {
-  // Get all cities in the state with metrics
-  const snapshots = await prisma.metricSnapshot.findMany({
-    where: {
-      geoType: 'CITY',
-      ratio: { not: null },
-    },
-    orderBy: {
-      asOfDate: 'desc',
-    },
-  });
+  // Get all cities in the state with metrics and V2 scores in parallel
+  const [snapshots, v2Scores] = await Promise.all([
+    prisma.metricSnapshot.findMany({
+      where: {
+        geoType: 'CITY',
+        ratio: { not: null },
+      },
+      orderBy: {
+        asOfDate: 'desc',
+      },
+    }),
+    prisma.v2AffordabilityScore.findMany({
+      where: { geoType: 'CITY' },
+      select: { geoId: true, compositeScore: true },
+    }),
+  ]);
+
+  // Create V2 score lookup map
+  const v2ScoreMap = new Map<string, number>();
+  for (const score of v2Scores) {
+    v2ScoreMap.set(score.geoId, score.compositeScore);
+  }
 
   // Get latest snapshot per city in this state
   const cities = await prisma.geoCity.findMany({
@@ -2987,16 +3461,21 @@ export async function getStateRankingForCity(
     }
   }
 
-  // Get the target city's ratio
+  // Get the target city's snapshot
   const targetSnapshot = latestByCity.get(cityId);
   if (!targetSnapshot || !targetSnapshot.ratio) {
     return null;
   }
 
-  // Sort all cities by ratio (lower is more affordable)
+  // Sort all cities by composite score (V2) or fallback to ratio-based score
+  // Higher score = more affordable
   const sortedCities = Array.from(latestByCity.entries())
-    .map(([id, snap]) => ({ cityId: id, ratio: snap.ratio! }))
-    .sort((a, b) => a.ratio - b.ratio);
+    .map(([id, snap]) => {
+      const v2Score = v2ScoreMap.get(id);
+      const score = v2Score ?? (100 - snap.ratio!);
+      return { cityId: id, score };
+    })
+    .sort((a, b) => b.score - a.score); // DESC: higher score = better rank
 
   // Find rank (1-indexed)
   const rank = sortedCities.findIndex((c) => c.cityId === cityId) + 1;
@@ -3021,22 +3500,35 @@ export interface StateRanking {
 }
 
 /**
- * Get all states ranked by median affordability ratio
- * @returns Array of states ranked from most to least affordable
+ * Get all states ranked by median affordability score
+ * Uses V2 composite score when available, falls back to ratio-based score
+ * @returns Array of states ranked from most to least affordable (by median score)
  */
 export async function getAllStatesRanked(): Promise<StateRanking[]> {
-  // Get all latest snapshots for cities
-  const snapshots = await prisma.metricSnapshot.findMany({
-    where: {
-      geoType: 'CITY',
-      ratio: { not: null },
-      income: { not: null },
-      homeValue: { not: null },
-    },
-    orderBy: {
-      asOfDate: 'desc',
-    },
-  });
+  // Get all latest snapshots for cities and V2 scores in parallel
+  const [snapshots, v2Scores] = await Promise.all([
+    prisma.metricSnapshot.findMany({
+      where: {
+        geoType: 'CITY',
+        ratio: { not: null },
+        income: { not: null },
+        homeValue: { not: null },
+      },
+      orderBy: {
+        asOfDate: 'desc',
+      },
+    }),
+    prisma.v2AffordabilityScore.findMany({
+      where: { geoType: 'CITY' },
+      select: { geoId: true, compositeScore: true },
+    }),
+  ]);
+
+  // Create V2 score lookup map
+  const v2ScoreMap = new Map<string, number>();
+  for (const score of v2Scores) {
+    v2ScoreMap.set(score.geoId, score.compositeScore);
+  }
 
   // Get all cities
   const cities = await prisma.geoCity.findMany({
@@ -3056,57 +3548,68 @@ export async function getAllStatesRanked(): Promise<StateRanking[]> {
     }
   }
 
-  // Group metrics by state
-  const metricsByState = new Map<string, { ratios: number[], incomes: number[], homeValues: number[] }>();
+  // Group metrics by state, calculating composite score for each city
+  const metricsByState = new Map<string, { scores: number[], incomes: number[], homeValues: number[], ratios: number[] }>();
   for (const city of cities) {
     const snapshot = latestByCity.get(city.cityId);
     if (snapshot?.ratio && snapshot?.income && snapshot?.homeValue) {
       if (!metricsByState.has(city.stateAbbr)) {
-        metricsByState.set(city.stateAbbr, { ratios: [], incomes: [], homeValues: [] });
+        metricsByState.set(city.stateAbbr, { scores: [], incomes: [], homeValues: [], ratios: [] });
       }
       const metrics = metricsByState.get(city.stateAbbr)!;
-      metrics.ratios.push(snapshot.ratio);
+
+      // Use V2 composite score if available, otherwise use ratio-based score
+      const v2Score = v2ScoreMap.get(city.cityId);
+      const affordabilityScore = v2Score ?? (100 - snapshot.ratio);
+
+      metrics.scores.push(affordabilityScore);
       metrics.incomes.push(snapshot.income);
       metrics.homeValues.push(snapshot.homeValue);
+      metrics.ratios.push(snapshot.ratio);
     }
   }
 
+  // Helper function to calculate median
+  const calculateMedian = (values: number[]): number => {
+    const sorted = [...values].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0
+      ? (sorted[mid - 1] + sorted[mid]) / 2
+      : sorted[mid];
+  };
+
   // Calculate median values for each state
-  const stateRankings: StateRanking[] = [];
+  const stateRankingsWithScore: Array<StateRanking & { medianScore: number }> = [];
 
   for (const [stateAbbr, metrics] of metricsByState.entries()) {
-    if (metrics.ratios.length === 0) continue;
+    if (metrics.scores.length === 0) continue;
 
-    // Helper function to calculate median
-    const calculateMedian = (values: number[]): number => {
-      const sorted = [...values].sort((a, b) => a - b);
-      const mid = Math.floor(sorted.length / 2);
-      return sorted.length % 2 === 0
-        ? (sorted[mid - 1] + sorted[mid]) / 2
-        : sorted[mid];
-    };
-
-    const medianRatio = calculateMedian(metrics.ratios);
+    const medianScore = calculateMedian(metrics.scores);
     const medianIncome = calculateMedian(metrics.incomes);
     const medianHomeValue = calculateMedian(metrics.homeValues);
+    const medianRatio = calculateMedian(metrics.ratios);
 
     // Get state info
     const state = stateFromAbbr(stateAbbr);
     if (!state) continue;
 
-    stateRankings.push({
+    stateRankingsWithScore.push({
       stateAbbr,
       stateName: state.name,
-      medianRatio,
+      medianRatio, // Keep for backward compatibility
       medianIncome,
       medianHomeValue,
-      cityCount: metrics.ratios.length,
+      cityCount: metrics.scores.length,
       slug: state.slug,
+      medianScore, // Temporary field for sorting
     });
   }
 
-  // Sort by median ratio (lower = more affordable)
-  return stateRankings.sort((a, b) => a.medianRatio - b.medianRatio);
+  // Sort by median composite score (higher score = more affordable)
+  stateRankingsWithScore.sort((a, b) => b.medianScore - a.medianScore);
+
+  // Remove the temporary medianScore field
+  return stateRankingsWithScore.map(({ medianScore, ...ranking }) => ranking);
 }
 
 /**
