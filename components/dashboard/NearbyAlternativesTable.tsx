@@ -47,12 +47,6 @@ export function NearbyAlternativesTable({ betterRows, worseRows }: NearbyAlterna
       ),
     },
     {
-      key: 'ratio',
-      label: 'Ratio',
-      align: 'right',
-      format: formatRatio,
-    },
-    {
       key: 'homeValue',
       label: 'Home Value',
       align: 'right',

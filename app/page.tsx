@@ -413,11 +413,11 @@ function RankingsSection({
                   )}
                 </div>
 
-                {/* Score + Ratio */}
+                {/* Affordability Score */}
                 <div className="space-y-2">
                   {score !== null && grade !== null && (
                     <div className="flex items-baseline gap-2">
-                      <span className="text-sm text-ai-text-muted">Score:</span>
+                      <span className="text-sm text-ai-text-muted">Affordability:</span>
                       <span
                         className={`text-lg font-semibold ${classes.accent}`}
                         data-testid="place-score"
@@ -425,14 +425,6 @@ function RankingsSection({
                         {formatScore(score)} ({grade})
                       </span>
                     </div>
-                  )}
-                  {city.metrics?.ratio && (
-                    <p
-                      className="text-sm text-ai-text-muted"
-                      data-testid="place-ratio"
-                    >
-                      Home value is {formatRatio(city.metrics.ratio)}× income
-                    </p>
                   )}
                 </div>
               </Link>

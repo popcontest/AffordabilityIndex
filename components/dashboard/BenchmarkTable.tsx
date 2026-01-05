@@ -79,13 +79,10 @@ export function BenchmarkTable({ rows }: BenchmarkTableProps) {
               </h3>
             </div>
 
-            {/* Affordability Ratio with Visual Bar */}
+            {/* Affordability Visual Bar */}
             <div className="mb-4">
               <div className="flex items-baseline justify-between mb-2">
-                <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">Affordability Ratio</span>
-                <span className={`text-2xl font-bold tabular-nums ${getTextColor(row.ratio)}`}>
-                  {formatRatio(row.ratio)}×
-                </span>
+                <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">Relative Affordability</span>
               </div>
 
               {/* Visual Bar */}
@@ -122,8 +119,8 @@ export function BenchmarkTable({ rows }: BenchmarkTableProps) {
       {/* Legend */}
       <div className="mt-6 pt-4 border-t border-gray-200">
         <div className="text-xs text-gray-600">
-          <span className="font-medium">How to read this:</span> Lower ratios mean better affordability.
-          The colored bars show relative comparison - longer bars indicate homes cost more relative to income.
+          <span className="font-medium">How to read this:</span> The colored bars show relative affordability comparison -
+          longer bars indicate less affordable areas where homes cost more relative to income.
         </div>
       </div>
     </div>

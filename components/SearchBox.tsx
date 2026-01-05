@@ -168,18 +168,6 @@ export function SearchBox() {
     router.push(result.canonicalUrl);
   }
 
-  function formatRatio(ratio: number | null): string {
-    if (ratio === null) return '—';
-    return ratio.toFixed(2);
-  }
-
-  function getRatioColor(ratio: number | null): string {
-    if (ratio === null) return 'text-gray-500';
-    if (ratio < 4) return 'text-green-700';
-    if (ratio < 6) return 'text-yellow-700';
-    return 'text-red-700';
-  }
-
   return (
     <div ref={searchRef} className="relative w-full">
       {/* Search Input + Button */}
@@ -258,14 +246,6 @@ export function SearchBox() {
                       : 'City'}
                   </div>
                 </div>
-                {result.ratio !== null && (
-                  <div className="flex-shrink-0 text-right">
-                    <div className={`text-sm font-semibold ${getRatioColor(result.ratio)}`}>
-                      {formatRatio(result.ratio)}
-                    </div>
-                    <div className="text-xs text-gray-500">ratio</div>
-                  </div>
-                )}
               </div>
             </button>
           ))}

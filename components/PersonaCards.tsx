@@ -65,7 +65,7 @@ export function PersonaCards({
       result.push({
         Icon: SunriseIcon,
         title: 'Retirees & Empty Nesters',
-        description: `Stretch your retirement savings further. With ${ratio.toFixed(1)}x affordability ratio, your fixed income goes much further here. Downsize from expensive metros and unlock $${Math.round((500000 - medianHomeValue) / 1000)}K+ in home equity.`,
+        description: `Stretch your retirement savings further with highly affordable housing. Your fixed income goes much further here. Downsize from expensive metros and unlock $${Math.round((500000 - medianHomeValue) / 1000)}K+ in home equity.`,
         fit: 'excellent',
       });
     }
@@ -85,7 +85,7 @@ export function PersonaCards({
       result.push({
         Icon: TrendUpIcon,
         title: 'Real Estate Investors',
-        description: `Strong affordability ratio (${ratio.toFixed(1)}x) means healthy rental market potential. Lower entry costs and steady demand from locals and relocators make this a smart buy-and-hold or rental property market.`,
+        description: `Strong affordability means healthy rental market potential. Lower entry costs and steady demand from locals and relocators make this a smart buy-and-hold or rental property market.`,
         fit: ratio < 3.0 ? 'excellent' : 'good',
       });
     }

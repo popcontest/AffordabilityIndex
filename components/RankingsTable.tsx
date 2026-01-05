@@ -7,7 +7,7 @@ import { PercentileBadge } from './PercentileBadge';
 import { stateFromAbbr } from '../lib/usStates';
 import { getAffordabilityScore } from '../lib/scoring';
 
-type SortColumn = 'rank' | 'city' | 'ratio' | 'population';
+type SortColumn = 'rank' | 'city' | 'score' | 'population';
 type SortDirection = 'asc' | 'desc';
 
 interface RankingsTableProps {
@@ -39,7 +39,7 @@ export function RankingsTable({ cities, title, description }: RankingsTableProps
         return multiplier * (rankA - rankB);
       case 'city':
         return multiplier * a.name.localeCompare(b.name);
-      case 'ratio':
+      case 'score':
         // Use V2 composite score with fallback to V1-derived score
         const scoreA = getAffordabilityScore(a.metrics);
         const scoreB = getAffordabilityScore(b.metrics);
@@ -98,13 +98,6 @@ export function RankingsTable({ cities, title, description }: RankingsTableProps
                 </div>
 
                 <div className="space-y-2 mt-3">
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-2xl font-bold text-ai-warm">
-                      {city.metrics?.ratio?.toFixed(1) ?? 'N/A'}×
-                    </span>
-                    <span className="text-sm text-ai-text-subtle">affordability ratio</span>
-                  </div>
-
                   {city.metrics?.affordabilityPercentile != null && (
                     <div>
                       <PercentileBadge
@@ -145,9 +138,9 @@ export function RankingsTable({ cities, title, description }: RankingsTableProps
               </th>
               <th
                 className="text-left p-4 font-semibold text-ai-text cursor-pointer hover:bg-ai-warm-subtle/80 transition-colors"
-                onClick={() => handleSort('ratio')}
+                onClick={() => handleSort('score')}
               >
-                Affordability Ratio <SortIcon column="ratio" />
+                Affordability Score <SortIcon column="score" />
               </th>
               <th className="text-left p-4 font-semibold text-ai-text">
                 Percentile
@@ -186,7 +179,7 @@ export function RankingsTable({ cities, title, description }: RankingsTableProps
                   </td>
                   <td className="p-4">
                     <span className="text-xl font-bold text-ai-warm">
-                      {city.metrics?.ratio?.toFixed(1) ?? 'N/A'}×
+                      {getAffordabilityScore(city.metrics)}
                     </span>
                   </td>
                   <td className="p-4">

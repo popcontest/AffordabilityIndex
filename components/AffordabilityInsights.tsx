@@ -3,7 +3,7 @@
  * Provides 2-3 human-readable takeaways based on city's affordability metrics
  */
 
-import { formatCurrency, formatRatio } from '@/lib/viewModels';
+import { formatCurrency } from '@/lib/viewModels';
 import {
   CheckIcon,
   DollarIcon,
@@ -45,25 +45,25 @@ export function AffordabilityInsights({ cityName, metrics, nationalPercentile }:
       insights.push({
         icon: <CheckIcon className="w-6 h-6" />,
         title: 'Strong Buying Power',
-        text: `The typical home costs ${formatRatio(ratio)} of median income. This is well below the national average of 5-6×, making homeownership more accessible.`,
+        text: `The typical home costs less than 3 years of median income. This is well below the national average, making homeownership more accessible.`,
       });
     } else if (ratio < 5) {
       insights.push({
         icon: <DollarIcon className="w-6 h-6" />,
         title: 'Moderate Affordability',
-        text: `Homes cost ${formatRatio(ratio)} of annual income. While manageable for many households, buyers may need to save for ${yearsToSave}+ years for a down payment.`,
+        text: `Homes cost about ${yearsToSave} years of annual income. While manageable for many households, buyers may need to save for several years for a down payment.`,
       });
     } else if (ratio < 7) {
       insights.push({
         icon: <AlertIcon className="w-6 h-6" />,
         title: 'Challenging Market',
-        text: `With homes costing ${formatRatio(ratio)} of median income, affordability is stretched. Only higher-income households or those with substantial savings can comfortably buy.`,
+        text: `With homes costing ${yearsToSave}+ years of median income, affordability is stretched. Only higher-income households or those with substantial savings can comfortably buy.`,
       });
     } else {
       insights.push({
         icon: <AlertIcon className="w-6 h-6" />,
         title: 'Severe Affordability Crisis',
-        text: `Homes cost ${formatRatio(ratio)} of annual income - nearly double the national average. Homeownership is out of reach for most middle-class households without significant financial help.`,
+        text: `Homes cost ${yearsToSave}+ years of annual income - nearly double the national average. Homeownership is out of reach for most middle-class households without significant financial help.`,
       });
     }
   }

@@ -3,9 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { formatCurrency, formatRatio } from '@/lib/viewModels';
-import { PercentileBadge } from './PercentileBadge';
-import { estimateAffordabilityPercentile } from '@/lib/percentile';
+import { formatCurrency } from '@/lib/viewModels';
 import { getAffordabilityScore } from '@/lib/scoring';
 
 interface LocationData {
@@ -177,31 +175,6 @@ export function CompareView() {
 
             {/* Metrics */}
             <div className="space-y-4">
-              {/* Affordability Ratio */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-gray-600">Affordability Ratio</span>
-                  {'index' in winners.ratio && winners.ratio.index === index && location.ratio && (
-                    <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded">
-                      BEST
-                    </span>
-                  )}
-                </div>
-                {location.ratio ? (
-                  <>
-                    <div className="text-2xl font-bold text-gray-900 mb-2">
-                      {formatRatio(location.ratio)}
-                    </div>
-                    <PercentileBadge
-                      percentile={estimateAffordabilityPercentile(location.ratio)}
-                      size="sm"
-                    />
-                  </>
-                ) : (
-                  <div className="text-gray-400">No data</div>
-                )}
-              </div>
-
               {/* Home Value */}
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -255,33 +228,6 @@ export function CompareView() {
       {/* Visual Comparison Bars */}
       <div className="bg-white rounded-xl border-2 border-gray-200 p-8">
         <h3 className="text-xl font-bold text-gray-900 mb-6">Visual Comparison</h3>
-
-        {/* Affordability Ratio Bars */}
-        <div className="mb-8">
-          <h4 className="text-sm font-semibold text-gray-700 mb-3">Affordability Ratio (Lower is Better)</h4>
-          <div className="space-y-3">
-            {locations.map((location, index) => (
-              <div key={index}>
-                <div className="flex items-center justify-between text-sm mb-1">
-                  <span className="font-medium text-gray-900">{location.name}</span>
-                  <span className="font-semibold text-gray-700">
-                    {location.ratio ? formatRatio(location.ratio) : 'N/A'}
-                  </span>
-                </div>
-                {location.ratio && (
-                  <div className="h-6 bg-gray-100 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all ${
-                        'index' in winners.ratio && winners.ratio.index === index ? 'bg-green-500' : 'bg-blue-400'
-                      }`}
-                      style={{ width: `${(location.ratio / maxRatio) * 100}%` }}
-                    />
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
 
         {/* Home Value Bars */}
         <div className="mb-8">

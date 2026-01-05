@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import { formatRatio } from '@/lib/viewModels';
 
 interface RankingItem {
   name?: string | null;
@@ -60,21 +59,10 @@ export function RankingPreviewTable({
                   State
                 </th>
               )}
-              <th className="px-6 py-3 text-right text-xs font-semibold text-ai-text-muted uppercase tracking-wider w-24">
-                Ratio
-              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-ai-border">
             {items.map((item, index) => {
-              // Handle both StateRanking (medianRatio) and CityWithMetrics (metrics.ratio)
-              const ratio = item.medianRatio ?? item.metrics?.ratio ?? null;
-              const ratioColor =
-                ratio === null || ratio === undefined ? 'text-gray-500' :
-                ratio < 4 ? 'text-ai-positive' :
-                ratio < 6 ? 'text-ai-warning' :
-                'text-ai-negative';
-
               // For display name, prefer stateName for states, name for cities
               const displayName = item.stateName || item.name || '—';
 
@@ -96,9 +84,6 @@ export function RankingPreviewTable({
                       {item.stateAbbr}
                     </td>
                   )}
-                  <td className={`px-6 py-3 text-right text-sm font-bold ${ratioColor}`}>
-                    {ratio !== null && ratio !== undefined ? formatRatio(ratio) : '—'}
-                  </td>
                 </tr>
               );
             })}

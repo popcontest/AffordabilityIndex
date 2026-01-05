@@ -393,12 +393,6 @@ export default async function ZipPage(props: ZipPageProps) {
               <h2 className="text-2xl font-bold text-gray-900 mb-4">Detailed Metrics</h2>
               <KpiGridDense>
                 <KpiCardDense
-                  label="Affordability Ratio"
-                  value={metrics.ratio !== null ? formatRatio(metrics.ratio) : null}
-                  subvalue={metrics.ratio ? deriveAffordabilityLabel(metrics.ratio) : undefined}
-                  tooltip="Home Value / Income - Lower is more affordable"
-                />
-                <KpiCardDense
                   label="Median Home Value"
                   value={formatCurrency(metrics.homeValue)}
                   subvalue={metrics.asOfDate ? formatDateShort(metrics.asOfDate) : undefined}

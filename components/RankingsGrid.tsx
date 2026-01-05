@@ -6,7 +6,7 @@ import { FilterBar, SortOption, AffordabilityFilter } from './FilterBar';
 import { RichTooltip } from './RichTooltip';
 import { AffordabilityBadge } from './AffordabilityBadge';
 import { AffordabilityBarCompact } from './AffordabilityBar';
-import { formatRatioPlain, getAffordabilityLevel } from '@/lib/affordabilityLabels';
+import { getAffordabilityLevel } from '@/lib/affordabilityLabels';
 import { stateFromAbbr } from '@/lib/usStates';
 import { getAffordabilityScore } from '@/lib/scoring';
 
@@ -73,9 +73,6 @@ const StateRankingItem = memo(function StateRankingItem({
               </div>
               <div className="flex items-center gap-2 mt-1.5">
                 <AffordabilityBarCompact ratio={state.medianRatio} />
-                <span className="text-[10px] text-gray-400 flex-shrink-0">
-                  {formatRatioPlain(state.medianRatio)}
-                </span>
               </div>
             </div>
           </div>
@@ -130,9 +127,6 @@ const CityRankingItem = memo(function CityRankingItem({
               </div>
               <div className="flex items-center gap-2">
                 <AffordabilityBarCompact ratio={city.metrics?.ratio || null} />
-                <span className="text-[10px] text-gray-400 flex-shrink-0">
-                  {city.metrics?.ratio ? formatRatioPlain(city.metrics.ratio) : '—'}
-                </span>
               </div>
             </div>
           </div>
