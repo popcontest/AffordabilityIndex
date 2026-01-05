@@ -25,11 +25,16 @@ if not DATABASE_URL:
     print("ERROR: DATABASE_URL environment variable not set")
     sys.exit(1)
 
-# Component weights (must match calculate_v2_scores.py)
-HOUSING_WEIGHT = 0.60  # Updated from 0.40
-COL_WEIGHT = 0.40      # Updated from 0.30
-TAX_WEIGHT = 0.0       # Disabled until data complete
-QOL_WEIGHT = 0.0       # Disabled (no crime data yet)
+# Dynamic burden-based weighting
+# Weights are calculated for each geography based on the proportion of total burden
+# that each component represents. This ensures the composite score reflects the
+# actual relative impact of housing, COL, and taxes on affordability.
+#
+# Example: If housing is 30% of income, COL is 20%, and taxes are 10%:
+# - Total burden = 60%
+# - Housing weight = 30/60 = 50%
+# - COL weight = 20/60 = 33%
+# - Tax weight = 10/60 = 17%
 
 
 def create_v2_scores_table(conn):
@@ -262,7 +267,10 @@ def calculate_all_tax_scores(conn):
             SELECT
                 g."geoType",
                 g."geoId",
+                -- Calculate total tax burden (income tax + sales tax)
+                -- NOTE: Income tax rates are stored as percentages (4.56 means 4.56%), must divide by 100
                 (
+                    -- Income tax amount
                     g."medianIncome" *
                     COALESCE(
                         CASE
@@ -272,9 +280,21 @@ def calculate_all_tax_scores(conn):
                             WHEN g."medianIncome" < 150000 THEN it."effectiveRateAt150k"
                             ELSE it."effectiveRateAt200k"
                         END, 0
-                    ) +
-                    (g."medianIncome" - g."medianIncome" * COALESCE(it."effectiveRateAt100k", 0)) * 0.30 *
-                    COALESCE(st."combinedRate" / 100.0, 0)
+                    ) / 100.0
+                    +
+                    -- Sales tax amount (30% of after-tax income × sales tax rate)
+                    (
+                        g."medianIncome" -
+                        g."medianIncome" * COALESCE(
+                            CASE
+                                WHEN g."medianIncome" < 50000 THEN it."effectiveRateAt50k"
+                                WHEN g."medianIncome" < 75000 THEN it."effectiveRateAt75k"
+                                WHEN g."medianIncome" < 100000 THEN it."effectiveRateAt100k"
+                                WHEN g."medianIncome" < 150000 THEN it."effectiveRateAt150k"
+                                ELSE it."effectiveRateAt200k"
+                            END, 0
+                        ) / 100.0
+                    ) * 0.30 * COALESCE(st."combinedRate" / 100.0, 0)
                 ) / g."medianIncome" AS tax_ratio
             FROM geo_with_state g
             LEFT JOIN income_tax_rate it
@@ -320,11 +340,23 @@ def calculate_all_tax_scores(conn):
 
 def calculate_composite_scores(housing_map, col_map, tax_map):
     """
-    Calculate composite scores from component scores
+    Calculate composite scores from component scores using dynamic burden-based weighting
+
+    Instead of fixed weights (60% housing, 40% COL), weights are calculated based on
+    each component's actual burden relative to total expenditures.
+
+    Example:
+    - Housing burden: 0.30 (30% of income)
+    - COL burden: 0.20 (20% of income)
+    - Tax burden: 0.10 (10% of income)
+    - Total burden: 0.60
+    - Housing weight: 0.30/0.60 = 50%
+    - COL weight: 0.20/0.60 = 33%
+    - Tax weight: 0.10/0.60 = 17%
 
     Returns: list of score records ready for database insertion
     """
-    print("Calculating composite scores...")
+    print("Calculating composite scores with dynamic burden-based weighting...")
 
     # Get all unique geographies
     all_geos = set(housing_map.keys()) | set(col_map.keys()) | set(tax_map.keys())
@@ -335,38 +367,49 @@ def calculate_composite_scores(housing_map, col_map, tax_map):
     for geo_key in all_geos:
         geo_type, geo_id = geo_key
 
-        # Get component scores
+        # Get component scores and burden ratios
         housing = housing_map.get(geo_key)
         col = col_map.get(geo_key)
         tax = tax_map.get(geo_key)
 
-        # Calculate weighted composite
+        # Calculate weights based on actual burden ratios
         components = []
         weights = []
 
-        if housing:
+        # Sum total burden across all available components
+        total_burden = 0.0
+        if housing and 'burden_ratio' in housing:
+            total_burden += housing['burden_ratio']
+        if col and 'col_burden' in col:
+            total_burden += col['col_burden']
+        if tax and 'tax_burden_ratio' in tax:
+            total_burden += tax['tax_burden_ratio']
+
+        # Skip if no burden data available
+        if total_burden == 0:
+            skipped_count += 1
+            continue
+
+        # Calculate dynamic weights based on proportion of total burden
+        if housing and 'burden_ratio' in housing:
             components.append(housing['score'])
-            weights.append(HOUSING_WEIGHT)
+            weights.append(housing['burden_ratio'] / total_burden)
 
-        if col:
+        if col and 'col_burden' in col:
             components.append(col['score'])
-            weights.append(COL_WEIGHT)
+            weights.append(col['col_burden'] / total_burden)
 
-        if tax and TAX_WEIGHT > 0:
+        if tax and 'tax_burden_ratio' in tax:
             components.append(tax['score'])
-            weights.append(TAX_WEIGHT)
+            weights.append(tax['tax_burden_ratio'] / total_burden)
 
         # Skip if insufficient data
         if not components:
             skipped_count += 1
             continue
 
-        # Normalize weights to sum to 1.0
-        total_weight = sum(weights)
-        normalized_weights = [w / total_weight for w in weights]
-
-        # Calculate weighted average
-        composite_score = sum(c * w for c, w in zip(components, normalized_weights))
+        # Calculate weighted average (weights already sum to 1.0 due to proportion calculation)
+        composite_score = sum(c * w for c, w in zip(components, weights))
 
         # Assess data quality
         components_available = sum([housing is not None, col is not None, tax is not None])
