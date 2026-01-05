@@ -53,21 +53,17 @@ export async function calculateRequiredIncome(
 
   // Get county FIPS for MIT Living Wage lookup
   const countyFips = await getCountyFips(geoType, geoId);
-  if (!countyFips) {
-    return null;
-  }
 
-  // Get MIT Living Wage cost basket
-  const costBasket = await prisma.costBasket.findFirst({
-    where: {
-      countyFips,
-      householdType,
-    },
-    orderBy: { updatedAt: 'desc' },
-  });
-
-  if (!costBasket) {
-    return null;
+  // Try to get MIT Living Wage cost basket (optional fallback)
+  let costBasket = null;
+  if (countyFips) {
+    costBasket = await prisma.costBasket.findFirst({
+      where: {
+        countyFips,
+        householdType,
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
   }
 
   // Calculate housing costs
@@ -88,9 +84,27 @@ export async function calculateRequiredIncome(
 
   const annualHousingCost = (monthlyMortgage + monthlyPropertyTax) * 12;
 
-  // Living expenses (non-housing from MIT Living Wage)
-  const housingCostInBasket = costBasket.housing || 0;
-  const annualLivingExpenses = costBasket.totalAnnual - housingCostInBasket;
+  // Living expenses (non-housing from MIT Living Wage, or use national average fallback)
+  let annualLivingExpenses: number;
+  if (costBasket) {
+    // Use actual MIT Living Wage data when available
+    const housingCostInBasket = costBasket.housing || 0;
+    annualLivingExpenses = costBasket.totalAnnual - housingCostInBasket;
+  } else {
+    // Fallback: Use simplified national average for family of 4 non-housing expenses
+    // Based on typical US household spending: food ($12k), transportation ($11k),
+    // healthcare ($5k), childcare ($10k), utilities ($3k), other ($5k) ≈ $46k/year
+    const FALLBACK_LIVING_EXPENSES = {
+      '1_adult_0_kids': 15000,
+      '1_adult_1_kid': 25000,
+      '1_adult_2_kids': 32000,
+      '2_adults_0_kids': 25000,
+      '2_adults_1_kid': 35000,
+      '2_adults_2_kids': 46000,
+      '2_adults_3_kids': 55000,
+    };
+    annualLivingExpenses = FALLBACK_LIVING_EXPENSES[householdType as keyof typeof FALLBACK_LIVING_EXPENSES] || 46000;
+  }
 
   // Get state for tax calculation
   const stateAbbr = await getStateAbbr(geoType, geoId);
