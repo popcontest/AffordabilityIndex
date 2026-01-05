@@ -34,12 +34,15 @@ export function estimateAffordabilityPercentile(ratio: number | null): number | 
 export function getPercentileLabel(percentile: number | null): string {
   if (percentile === null) return 'N/A';
 
-  if (percentile >= 95) return `Top 5% Most Affordable`;
-  if (percentile >= 90) return `Top 10% Most Affordable`;
-  if (percentile >= 75) return `Top 25% Most Affordable`;
-  if (percentile >= 50) return `Above Average Affordability`;
-  if (percentile >= 25) return `Below Average Affordability`;
-  if (percentile >= 10) return `Bottom 25% Affordability`;
+  // Round percentile to avoid excessive decimals
+  const rounded = Math.round(percentile);
+
+  if (rounded >= 95) return `Top 5% Most Affordable`;
+  if (rounded >= 90) return `Top 10% Most Affordable`;
+  if (rounded >= 75) return `Top 25% Most Affordable`;
+  if (rounded >= 50) return `Above Average Affordability`;
+  if (rounded >= 25) return `Below Average Affordability`;
+  if (rounded >= 10) return `Bottom 25% Affordability`;
   return `Bottom 10% Affordability`;
 }
 
@@ -62,7 +65,7 @@ export function getPercentileColor(percentile: number | null): string {
 export function getPercentileDescription(percentile: number | null): string {
   if (percentile === null) return 'Percentile data not available';
 
-  return `More affordable than ${percentile}% of US cities`;
+  return `More affordable than ${Math.round(percentile)}% of US cities`;
 }
 
 /**

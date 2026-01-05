@@ -5,7 +5,7 @@ import { useState } from 'react';
 import type { CityWithMetrics } from '../lib/data';
 import { PercentileBadge } from './PercentileBadge';
 import { stateFromAbbr } from '../lib/usStates';
-import { getAffordabilityScore } from '../lib/scoring';
+import { getAffordabilityScore, formatScore } from '../lib/scoring';
 
 type SortColumn = 'rank' | 'city' | 'score' | 'population';
 type SortDirection = 'asc' | 'desc';
@@ -179,7 +179,7 @@ export function RankingsTable({ cities, title, description }: RankingsTableProps
                   </td>
                   <td className="p-4">
                     <span className="text-xl font-bold text-ai-warm">
-                      {getAffordabilityScore(city.metrics)}
+                      {formatScore(getAffordabilityScore(city.metrics))}
                     </span>
                   </td>
                   <td className="p-4">
