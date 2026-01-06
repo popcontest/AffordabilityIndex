@@ -3718,277 +3718,37 @@ export async function getStateDashboardData(stateSlug: string): Promise<StateDas
 
   const lastUpdated = lastUpdatedResult[0]?.max_date || null;
 
-  // Get top 12 most affordable cities (50k+) using SQL window function
-  const topCitiesAffordableData = await prisma.$queryRaw<Array<{
-    cityId: string;
-    name: string;
-    stateAbbr: string;
-    stateName: string | null;
-    countyName: string | null;
-    metro: string | null;
-    slug: string;
-    population: number | null;
-    ratio: number | null;
-    homeValue: number | null;
-    income: number | null;
-    asOfDate: Date;
-    sources: string | null;
-    affordabilityPercentile: number | null;
-  }>>`
-    WITH latest AS (
-      SELECT DISTINCT ON ("geoType", "geoId")
-        "geoId", ratio, "homeValue", income, "asOfDate", sources
-      FROM metric_snapshot
-      WHERE "geoType" = 'CITY'
-        AND ratio IS NOT NULL
-        AND "homeValue" IS NOT NULL
-        AND income IS NOT NULL
-      ORDER BY "geoType", "geoId", "asOfDate" DESC
-    ),
-    scoped AS (
-      SELECT
-        gc."cityId", gc.name, gc."stateAbbr", gc."stateName", gc."countyName",
-        gc.metro, gc.slug, gc.population,
-        l.ratio, l."homeValue", l.income, l."asOfDate", l.sources
-      FROM latest l
-      JOIN geo_city gc ON gc."cityId" = l."geoId"
-      WHERE gc."stateAbbr" = ${state.abbr}
-        AND ${Prisma.raw(BUCKET_WHERE.CITY)}
-    ),
-    ranked AS (
-      SELECT *,
-        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS "affordabilityPercentile"
-      FROM scoped
-    )
-    SELECT * FROM ranked
-    ORDER BY ratio ASC
-    LIMIT 12;
-  `;
+  // Use getStateTopCities for consistent V2 score handling
+  // Get more cities than needed, then filter by population buckets
+  const [allAffordable, allExpensive] = await Promise.all([
+    getStateTopCities(state.abbr, 500, true),  // most affordable
+    getStateTopCities(state.abbr, 500, false), // least affordable
+  ]);
 
-  const topCitiesAffordable: CityWithMetrics[] = topCitiesAffordableData.map((row) => ({
-    cityId: row.cityId,
-    name: row.name,
-    stateAbbr: row.stateAbbr,
-    stateName: row.stateName,
-    countyName: row.countyName,
-    metro: row.metro,
-    slug: row.slug,
-    population: row.population,
-    metrics: {
-      ratio: row.ratio,
-      homeValue: row.homeValue,
-      income: row.income,
-      earningPower: row.homeValue && row.homeValue > 0 ? (row.income || 0) / row.homeValue : null,
-      asOfDate: row.asOfDate,
-      sources: row.sources,
-      affordabilityPercentile: row.affordabilityPercentile,
-    },
-  }));
+  // Filter by population buckets and take top 12 from each
+  const topCitiesAffordable = allAffordable
+    .filter(c => (c.population ?? 0) >= 50000)
+    .slice(0, 12);
 
-  // Get top 12 most affordable small cities (10k-50k)
-  const topSmallCitiesAffordableData = await prisma.$queryRaw<Array<{
-    cityId: string; name: string; stateAbbr: string; stateName: string | null;
-    countyName: string | null; metro: string | null; slug: string; population: number | null;
-    ratio: number | null; homeValue: number | null; income: number | null;
-    asOfDate: Date; sources: string | null; affordabilityPercentile: number | null;
-  }>>`
-    WITH latest AS (
-      SELECT DISTINCT ON ("geoType", "geoId")
-        "geoId", ratio, "homeValue", income, "asOfDate", sources
-      FROM metric_snapshot
-      WHERE "geoType" = 'CITY' AND ratio IS NOT NULL AND "homeValue" IS NOT NULL AND income IS NOT NULL
-      ORDER BY "geoType", "geoId", "asOfDate" DESC
-    ),
-    scoped AS (
-      SELECT gc."cityId", gc.name, gc."stateAbbr", gc."stateName", gc."countyName",
-        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources
-      FROM latest l JOIN geo_city gc ON gc."cityId" = l."geoId"
-      WHERE gc."stateAbbr" = ${state.abbr} AND ${Prisma.raw(BUCKET_WHERE.SMALL_CITY)}
-    ),
-    ranked AS (
-      SELECT *,
-        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS "affordabilityPercentile"
-      FROM scoped
-    )
-    SELECT * FROM ranked
-    ORDER BY ratio ASC
-    LIMIT 12;
-  `;
+  const topSmallCitiesAffordable = allAffordable
+    .filter(c => (c.population ?? 0) >= 10000 && (c.population ?? 0) < 50000)
+    .slice(0, 12);
 
-  const topSmallCitiesAffordable: CityWithMetrics[] = topSmallCitiesAffordableData.map((row) => ({
-    cityId: row.cityId, name: row.name, stateAbbr: row.stateAbbr, stateName: row.stateName,
-    countyName: row.countyName, metro: row.metro, slug: row.slug, population: row.population,
-    metrics: {
-      ratio: row.ratio, homeValue: row.homeValue, income: row.income,
-      earningPower: row.homeValue && row.homeValue > 0 ? (row.income || 0) / row.homeValue : null,
-      asOfDate: row.asOfDate, sources: row.sources,
-      affordabilityPercentile: row.affordabilityPercentile,
-    },
-  }));
+  const topTownsAffordable = allAffordable
+    .filter(c => (c.population ?? 0) < 10000)
+    .slice(0, 12);
 
-  // Get top 12 most affordable towns (<10k)
-  const topTownsAffordableData = await prisma.$queryRaw<Array<{
-    cityId: string; name: string; stateAbbr: string; stateName: string | null;
-    countyName: string | null; metro: string | null; slug: string; population: number | null;
-    ratio: number | null; homeValue: number | null; income: number | null;
-    asOfDate: Date; sources: string | null; affordabilityPercentile: number | null;
-  }>>`
-    WITH latest AS (
-      SELECT DISTINCT ON ("geoType", "geoId")
-        "geoId", ratio, "homeValue", income, "asOfDate", sources
-      FROM metric_snapshot
-      WHERE "geoType" = 'CITY' AND ratio IS NOT NULL AND "homeValue" IS NOT NULL AND income IS NOT NULL
-      ORDER BY "geoType", "geoId", "asOfDate" DESC
-    ),
-    scoped AS (
-      SELECT gc."cityId", gc.name, gc."stateAbbr", gc."stateName", gc."countyName",
-        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources
-      FROM latest l JOIN geo_city gc ON gc."cityId" = l."geoId"
-      WHERE gc."stateAbbr" = ${state.abbr} AND ${Prisma.raw(BUCKET_WHERE.TOWN)}
-    ),
-    ranked AS (
-      SELECT *,
-        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS "affordabilityPercentile"
-      FROM scoped
-    )
-    SELECT * FROM ranked
-    ORDER BY ratio ASC
-    LIMIT 12;
-  `;
+  const topCitiesExpensive = allExpensive
+    .filter(c => (c.population ?? 0) >= 50000)
+    .slice(0, 12);
 
-  const topTownsAffordable: CityWithMetrics[] = topTownsAffordableData.map((row) => ({
-    cityId: row.cityId, name: row.name, stateAbbr: row.stateAbbr, stateName: row.stateName,
-    countyName: row.countyName, metro: row.metro, slug: row.slug, population: row.population,
-    metrics: {
-      ratio: row.ratio, homeValue: row.homeValue, income: row.income,
-      earningPower: row.homeValue && row.homeValue > 0 ? (row.income || 0) / row.homeValue : null,
-      asOfDate: row.asOfDate, sources: row.sources,
-      affordabilityPercentile: row.affordabilityPercentile,
-    },
-  }));
+  const topSmallCitiesExpensive = allExpensive
+    .filter(c => (c.population ?? 0) >= 10000 && (c.population ?? 0) < 50000)
+    .slice(0, 12);
 
-  // Get top 12 least affordable cities (50k+)
-  const topCitiesExpensiveData = await prisma.$queryRaw<Array<{
-    cityId: string; name: string; stateAbbr: string; stateName: string | null;
-    countyName: string | null; metro: string | null; slug: string; population: number | null;
-    ratio: number | null; homeValue: number | null; income: number | null;
-    asOfDate: Date; sources: string | null; affordabilityPercentile: number | null;
-  }>>`
-    WITH latest AS (
-      SELECT DISTINCT ON ("geoType", "geoId")
-        "geoId", ratio, "homeValue", income, "asOfDate", sources
-      FROM metric_snapshot
-      WHERE "geoType" = 'CITY' AND ratio IS NOT NULL AND "homeValue" IS NOT NULL AND income IS NOT NULL
-      ORDER BY "geoType", "geoId", "asOfDate" DESC
-    ),
-    scoped AS (
-      SELECT gc."cityId", gc.name, gc."stateAbbr", gc."stateName", gc."countyName",
-        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources
-      FROM latest l JOIN geo_city gc ON gc."cityId" = l."geoId"
-      WHERE gc."stateAbbr" = ${state.abbr} AND gc.population >= 50000
-    ),
-    ranked AS (
-      SELECT *,
-        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS "affordabilityPercentile"
-      FROM scoped
-    )
-    SELECT * FROM ranked
-    ORDER BY ratio DESC
-    LIMIT 12;
-  `;
-
-  const topCitiesExpensive: CityWithMetrics[] = topCitiesExpensiveData.map((row) => ({
-    cityId: row.cityId, name: row.name, stateAbbr: row.stateAbbr, stateName: row.stateName,
-    countyName: row.countyName, metro: row.metro, slug: row.slug, population: row.population,
-    metrics: {
-      ratio: row.ratio, homeValue: row.homeValue, income: row.income,
-      earningPower: row.homeValue && row.homeValue > 0 ? (row.income || 0) / row.homeValue : null,
-      asOfDate: row.asOfDate, sources: row.sources,
-      affordabilityPercentile: row.affordabilityPercentile,
-    },
-  }));
-
-  // Get top 12 least affordable small cities (10k-50k)
-  const topSmallCitiesExpensiveData = await prisma.$queryRaw<Array<{
-    cityId: string; name: string; stateAbbr: string; stateName: string | null;
-    countyName: string | null; metro: string | null; slug: string; population: number | null;
-    ratio: number | null; homeValue: number | null; income: number | null;
-    asOfDate: Date; sources: string | null; affordabilityPercentile: number | null;
-  }>>`
-    WITH latest AS (
-      SELECT DISTINCT ON ("geoType", "geoId")
-        "geoId", ratio, "homeValue", income, "asOfDate", sources
-      FROM metric_snapshot
-      WHERE "geoType" = 'CITY' AND ratio IS NOT NULL AND "homeValue" IS NOT NULL AND income IS NOT NULL
-      ORDER BY "geoType", "geoId", "asOfDate" DESC
-    ),
-    scoped AS (
-      SELECT gc."cityId", gc.name, gc."stateAbbr", gc."stateName", gc."countyName",
-        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources
-      FROM latest l JOIN geo_city gc ON gc."cityId" = l."geoId"
-      WHERE gc."stateAbbr" = ${state.abbr} AND ${Prisma.raw(BUCKET_WHERE.SMALL_CITY)}
-    ),
-    ranked AS (
-      SELECT *,
-        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS "affordabilityPercentile"
-      FROM scoped
-    )
-    SELECT * FROM ranked
-    ORDER BY ratio DESC
-    LIMIT 12;
-  `;
-
-  const topSmallCitiesExpensive: CityWithMetrics[] = topSmallCitiesExpensiveData.map((row) => ({
-    cityId: row.cityId, name: row.name, stateAbbr: row.stateAbbr, stateName: row.stateName,
-    countyName: row.countyName, metro: row.metro, slug: row.slug, population: row.population,
-    metrics: {
-      ratio: row.ratio, homeValue: row.homeValue, income: row.income,
-      earningPower: row.homeValue && row.homeValue > 0 ? (row.income || 0) / row.homeValue : null,
-      asOfDate: row.asOfDate, sources: row.sources,
-      affordabilityPercentile: row.affordabilityPercentile,
-    },
-  }));
-
-  // Get top 12 least affordable towns (<10k)
-  const topTownsExpensiveData = await prisma.$queryRaw<Array<{
-    cityId: string; name: string; stateAbbr: string; stateName: string | null;
-    countyName: string | null; metro: string | null; slug: string; population: number | null;
-    ratio: number | null; homeValue: number | null; income: number | null;
-    asOfDate: Date; sources: string | null; affordabilityPercentile: number | null;
-  }>>`
-    WITH latest AS (
-      SELECT DISTINCT ON ("geoType", "geoId")
-        "geoId", ratio, "homeValue", income, "asOfDate", sources
-      FROM metric_snapshot
-      WHERE "geoType" = 'CITY' AND ratio IS NOT NULL AND "homeValue" IS NOT NULL AND income IS NOT NULL
-      ORDER BY "geoType", "geoId", "asOfDate" DESC
-    ),
-    scoped AS (
-      SELECT gc."cityId", gc.name, gc."stateAbbr", gc."stateName", gc."countyName",
-        gc.metro, gc.slug, gc.population, l.ratio, l."homeValue", l.income, l."asOfDate", l.sources
-      FROM latest l JOIN geo_city gc ON gc."cityId" = l."geoId"
-      WHERE gc."stateAbbr" = ${state.abbr} AND ${Prisma.raw(BUCKET_WHERE.TOWN)}
-    ),
-    ranked AS (
-      SELECT *,
-        ((1 - cume_dist() OVER (ORDER BY ratio ASC)) * 100) AS "affordabilityPercentile"
-      FROM scoped
-    )
-    SELECT * FROM ranked
-    ORDER BY ratio DESC
-    LIMIT 12;
-  `;
-
-  const topTownsExpensive: CityWithMetrics[] = topTownsExpensiveData.map((row) => ({
-    cityId: row.cityId, name: row.name, stateAbbr: row.stateAbbr, stateName: row.stateName,
-    countyName: row.countyName, metro: row.metro, slug: row.slug, population: row.population,
-    metrics: {
-      ratio: row.ratio, homeValue: row.homeValue, income: row.income,
-      earningPower: row.homeValue && row.homeValue > 0 ? (row.income || 0) / row.homeValue : null,
-      asOfDate: row.asOfDate, sources: row.sources,
-      affordabilityPercentile: row.affordabilityPercentile,
-    },
-  }));
+  const topTownsExpensive = allExpensive
+    .filter(c => (c.population ?? 0) < 10000)
+    .slice(0, 12);
 
   // Get top 20 cities by earning power (income/homeValue)
   const topCitiesEarningPowerData = await prisma.$queryRaw<Array<{
