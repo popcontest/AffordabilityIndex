@@ -2,7 +2,7 @@ import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { canonical, isZip } from '@/lib/seo';
-import { getZipDashboardData, getStateRankingForZip, buildV2ScoreBreakdown } from '@/lib/data';
+import { getZipDashboardData, getStateRankingForZip, buildV2ScoreBreakdown, getAcsSnapshot, shouldShowDemographics } from '@/lib/data';
 import { calculateRequiredIncome } from '@/lib/required-income';
 import { stateFromAbbr } from '@/lib/usStates';
 import { getV2Score } from '@/lib/v2-scores';
@@ -26,6 +26,8 @@ import { PersonaCards } from '@/components/PersonaCards';
 import { ScoreHero } from '@/components/ScoreHero';
 import { ScoreBreakdownPanel } from '@/components/ScoreBreakdownPanel';
 import { TrueAffordabilitySection } from '@/components/TrueAffordabilitySection';
+import { RentVsBuyCalculator } from '@/components/RentVsBuyCalculator';
+import { HousingEconomicContext } from '@/components/HousingEconomicContext';
 import {
   formatCurrency,
   formatRatio,
@@ -122,6 +124,14 @@ export default async function ZipPage(props: ZipPageProps) {
     requiredIncome = await calculateRequiredIncome('ZCTA', zip);
   } catch (error) {
     console.error('Failed to calculate required income:', error);
+  }
+
+  // Fetch ACS demographic data (with error handling)
+  let acsData = null;
+  try {
+    acsData = await getAcsSnapshot('ZCTA', zip);
+  } catch (error) {
+    console.error('Failed to fetch ACS data for ZIP:', error);
   }
 
   // Build score breakdown - use V2 composite score if available, otherwise use dashboard score
@@ -430,6 +440,34 @@ export default async function ZipPage(props: ZipPageProps) {
               <Panel title="Benchmarks" subtitle="Compare to state and national averages">
                 <BenchmarkTable rows={dashboardData.benchmarks} />
               </Panel>
+            )}
+
+            {/* Rent vs Buy Calculator */}
+            {acsData?.medianRent && metrics?.homeValue && (
+              <div className="mb-8">
+                <RentVsBuyCalculator
+                  medianRent={acsData.medianRent}
+                  medianHomeValue={metrics.homeValue}
+                  propertyTaxRate={dashboardData.snapshot?.propertyTaxRate || 0.012}
+                  cityName={cityDisplay}
+                  stateAbbr={zcta.stateAbbr || 'US'}
+                />
+              </div>
+            )}
+
+            {/* Housing & Economic Context */}
+            {acsData && shouldShowDemographics(acsData) && (
+              <div className="mb-8">
+                <HousingEconomicContext
+                  medianRent={acsData.medianRent!}
+                  medianRentMoe={acsData.medianRentMoe!}
+                  housingBurdenPct={acsData.housingBurdenPct}
+                  housingBurdenPctMoe={acsData.housingBurdenPctMoe}
+                  povertyRatePct={acsData.povertyRatePct!}
+                  povertyRatePctMoe={acsData.povertyRatePctMoe!}
+                  vintage={acsData.vintage}
+                />
+              </div>
             )}
 
             {/* Nearby Alternatives */}

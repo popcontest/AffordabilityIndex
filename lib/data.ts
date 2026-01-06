@@ -3933,3 +3933,81 @@ export async function getStateDashboardData(stateSlug: string): Promise<StateDas
     topCitiesEarningPower,
   };
 }
+
+// ============================================================================
+// ACS (American Community Survey) Data Access
+// ============================================================================
+
+/**
+ * Fetch ACS demographic snapshot for a geography
+ *
+ * @param geoType - Geography type (CITY, ZCTA)
+ * @param geoId - Geography identifier
+ * @returns ACS snapshot data or null if not available
+ */
+export async function getAcsSnapshot(
+  geoType: 'CITY' | 'ZCTA',
+  geoId: string
+) {
+  const snapshot = await prisma.acsSnapshot.findFirst({
+    where: {
+      geoType,
+      geoId,
+    },
+    orderBy: {
+      asOfYear: 'desc', // Get most recent data
+    },
+  });
+
+  return snapshot;
+}
+
+/**
+ * Calculate coefficient of variation (CV) for an ACS estimate
+ * CV = (MOE / 1.645) / estimate
+ *
+ * @param estimate - The estimate value
+ * @param moe - Margin of error
+ * @returns CV as a decimal (e.g., 0.15 = 15% CV), or Infinity if estimate is 0
+ */
+export function calculateCv(estimate: number | null, moe: number | null): number {
+  if (estimate === null || moe === null || estimate === 0) {
+    return Infinity;
+  }
+  return (moe / 1.645) / Math.abs(estimate);
+}
+
+/**
+ * Determine if demographics section should be shown based on data quality
+ * Uses CV (coefficient of variation) thresholds to filter unreliable data
+ *
+ * @param acsData - ACS snapshot data
+ * @returns true if at least 2 of 3 metrics pass CV < 30% threshold
+ */
+export function shouldShowDemographics(
+  acsData: {
+    medianRent: number | null;
+    medianRentMoe: number | null;
+    housingBurdenPct: number | null;
+    housingBurdenPctMoe: number | null;
+    povertyRatePct: number | null;
+    povertyRatePctMoe: number | null;
+  } | null
+): boolean {
+  if (!acsData) return false;
+
+  // Calculate CVs
+  const rentCv = calculateCv(acsData.medianRent, acsData.medianRentMoe);
+  const burdenCv = calculateCv(acsData.housingBurdenPct, acsData.housingBurdenPctMoe);
+  const povertyCv = calculateCv(acsData.povertyRatePct, acsData.povertyRatePctMoe);
+
+  // Count how many metrics pass the 30% CV threshold
+  const passingMetrics = [
+    rentCv < 0.30,
+    burdenCv < 0.30,
+    povertyCv < 0.30,
+  ].filter(Boolean).length;
+
+  // Show if at least 2 of 3 metrics are reliable
+  return passingMetrics >= 2;
+}
