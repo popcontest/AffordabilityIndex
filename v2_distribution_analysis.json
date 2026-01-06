@@ -1,0 +1,136 @@
+{
+  "basic_statistics": {
+    "total_records": 43407.0,
+    "composite_count": 43407.0,
+    "composite_min": 0.00706976488293796,
+    "composite_max": 99.9820098498579,
+    "composite_mean": 46.4543470369518,
+    "composite_stddev": 24.9474267334738,
+    "composite_p10": 11.3597625446861,
+    "composite_p25": 25.2788946434478,
+    "composite_p50": 47.3021292069007,
+    "composite_p75": 68.3519833130881,
+    "composite_p90": 78.9764544333436,
+    "housing_count": 43407.0,
+    "housing_min": 0.0020201203991661,
+    "housing_max": 99.9989899398004,
+    "housing_mean": 49.213612183052,
+    "housing_stddev": 28.660094833085,
+    "housing_median": 48.718233606723,
+    "col_count": 999.0,
+    "col_min": 0.0,
+    "col_max": 99.9507874015748,
+    "col_mean": 48.4139158843883,
+    "col_stddev": 29.0565433243513,
+    "col_median": 47.6377952755906,
+    "tax_count": 43407.0,
+    "tax_min": 0.00252513774626095,
+    "tax_max": 100.0,
+    "tax_mean": 50.2385447954508,
+    "tax_stddev": 28.8120710420088,
+    "tax_median": 49.9356089874703
+  },
+  "quartile_distribution": {
+    "quartile_1": 10852,
+    "quartile_2": 10852,
+    "quartile_3": 10851,
+    "quartile_4": 10852
+  },
+  "normality_tests": {
+    "skewness": -0.06754966021380598,
+    "kurtosis": -1.1245616756680192,
+    "shapiro_statistic": 0.9632009653546367,
+    "shapiro_p_value": 7.099646459117525e-34
+  },
+  "std_deviation_coverage": {
+    "within_1std_pct": 58.87760038703435,
+    "within_2std_pct": 99.70742046213743,
+    "within_3std_pct": 100.0,
+    "expected_1std": 68.27,
+    "expected_2std": 95.45,
+    "expected_3std": 99.73
+  },
+  "outlier_analysis": {
+    "iqr": 43.07308866964035,
+    "lower_bound": -39.33073836101277,
+    "upper_bound": 132.96161631754862,
+    "outlier_count": 0,
+    "outlier_pct": 0.0,
+    "outlier_samples": []
+  },
+  "component_comparison": {
+    "composite": {
+      "mean": 46.45434703695151,
+      "median": 47.3021292069007,
+      "std": 24.947426733473772,
+      "min": 0.00706976488293796,
+      "max": 99.9820098498579,
+      "skewness": -0.06754966021380598,
+      "kurtosis": -1.1245616756680192,
+      "count": 43407
+    },
+    "housing": {
+      "mean": 49.21361218305194,
+      "median": 48.718233606723,
+      "std": 28.66009483308496,
+      "min": 0.0020201203991661,
+      "max": 99.9989899398004,
+      "skewness": 0.03496155781907728,
+      "kurtosis": -1.1864689977322966,
+      "count": 43407
+    },
+    "col": {
+      "mean": 48.41391588438833,
+      "median": 47.6377952755906,
+      "std": 29.056543324351303,
+      "min": 0.0,
+      "max": 99.9507874015748,
+      "skewness": 0.057562754638071215,
+      "kurtosis": -1.2092183125812326,
+      "count": 999
+    },
+    "tax": {
+      "mean": 50.23854479545316,
+      "median": 49.9356089874703,
+      "std": 28.81207104200886,
+      "min": 0.00252513774626095,
+      "max": 100.0,
+      "skewness": 0.02170772524712584,
+      "kurtosis": -1.1709333610062258,
+      "count": 43407
+    }
+  },
+  "score_range_distribution": {
+    "0-20 (Very Low Affordability)": {
+      "count": 8338,
+      "percentage": 19.208883359826757
+    },
+    "20-40 (Low Affordability)": {
+      "count": 9743,
+      "percentage": 22.445688483424334
+    },
+    "40-60 (Moderate Affordability)": {
+      "count": 9967,
+      "percentage": 22.961734282488997
+    },
+    "60-80 (Good Affordability)": {
+      "count": 11516,
+      "percentage": 26.53028313405672
+    },
+    "80-100 (Excellent Affordability)": {
+      "count": 3843,
+      "percentage": 8.853410740203193
+    }
+  },
+  "recommendation": {
+    "needs_renormalization": false,
+    "severity": "low",
+    "issues_found": [
+      "Only 58.9% within 1 std dev (expected ~68%)"
+    ],
+    "recommendations": [
+      "Current distribution appears acceptable"
+    ],
+    "suggested_approach": "No normalization needed - current distribution is acceptable"
+  }
+}

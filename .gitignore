@@ -76,3 +76,6 @@ nul
 
 # Old monorepo directory (migrated to root)
 apps/
+
+.vercel
+.env*.local

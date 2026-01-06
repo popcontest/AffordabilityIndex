@@ -229,6 +229,36 @@ model AffordabilitySnapshot {
   @@map("affordability_snapshot")
 }
 
+// ACS (American Community Survey) demographic snapshot
+// Stores affordability-related ACS metrics with margins of error
+model AcsSnapshot {
+  id        String   @id @default(cuid())
+  geoType   GeoType
+  geoId     String   @db.VarChar(16) // placeGeoid, cityId, or zcta
+  vintage   String   @db.VarChar(20) // "2018-2022" (ACS 5-year period)
+  asOfYear  Int // 2022 (end year of 5-year period)
+
+  // Median Gross Rent (B25064)
+  medianRent    Float? // Monthly rent in dollars
+  medianRentMoe Float? // Margin of error
+
+  // Housing Cost Burden (DP04_0136PE - % spending 30%+ on housing)
+  housingBurdenPct    Float? // Percentage 0-100
+  housingBurdenPctMoe Float? // Margin of error
+
+  // Poverty Rate (S1701_C03_001E - % below poverty level)
+  povertyRatePct    Float? // Percentage 0-100
+  povertyRatePctMoe Float? // Margin of error
+
+  // Metadata
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([geoType, geoId, asOfYear])
+  @@index([geoType, geoId])
+  @@map("acs_snapshot")
+}
+
 // User-customized calculations (for calculator tool)
 model UserCalculation {
   id        String  @id @default(cuid())

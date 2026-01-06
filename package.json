@@ -23,6 +23,7 @@
     "@prisma/adapter-pg": "^7.1.0",
     "@prisma/client": "^7.1.0",
     "autoprefixer": "^10.4.23",
+    "dotenv": "^17.2.3",
     "framer-motion": "^12.23.26",
     "next": "16.0.10",
     "openai": "^6.15.0",

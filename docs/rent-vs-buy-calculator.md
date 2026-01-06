@@ -1,6 +1,31 @@
 # Rent vs Buy Calculator - Implementation Plan
 
 **Created:** January 5, 2026
+**Updated:** January 6, 2026
+**Status:** SUPERSEDED - See combined approach below
+
+---
+
+## UPDATE: Plan Modified (January 6, 2026)
+
+**Discovery:** HUD FMR data is only 4% imported (1,607/39,288 cities, 0/63,600 ZCTAs).
+
+**New Approach:** Using **ACS median rent (B25064)** instead of HUD FMR, combined with demographics in a unified ETL.
+
+**See:** `combined-acs-implementation.md` for the current approved implementation plan.
+
+**Key Changes:**
+- Data source: ACS B25064 (Median Gross Rent) instead of HUD FMR
+- Coverage: 95%+ expected vs 4% current
+- Implementation: Combined with 3-metric demographics module (rent, housing burden, poverty rate)
+- Timeline: 5 weeks (vs 2-4 weeks standalone)
+
+The calculator design and features below remain largely the same, but the data source has changed.
+
+---
+
+## Original Plan (HUD FMR-Based)
+
 **Priority:** HIGH (Phase 1 before ACS demographics)
 **Timeline:** 2-4 weeks
 
