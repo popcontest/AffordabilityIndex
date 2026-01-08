@@ -1,7 +1,7 @@
 /**
  * StaticCityMap - Displays a static map image for a city using Mapbox Static Images API
  *
- * Uses geocode.maps.co (free, no auth) for geocoding, then Mapbox for static map rendering.
+ * Uses Mapbox Geocoding API for coordinates, then Mapbox Static Images API for rendering.
  * This is a server component that fetches coordinates once during SSR/SSG.
  */
 
@@ -11,10 +11,72 @@ interface StaticCityMapProps {
   className?: string;
 }
 
-export function StaticCityMap({ cityName, stateAbbr, className = '' }: StaticCityMapProps) {
-  // TEMPORARY: Disable geocoding to prevent production errors
-  // TODO: Re-enable once Mapbox Geocoding API scope is confirmed working in production
-  return <MapPlaceholder cityName={cityName} stateAbbr={stateAbbr} className={className} />;
+export async function StaticCityMap({ cityName, stateAbbr, className = '' }: StaticCityMapProps) {
+  const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+
+  // If no token or placeholder token, show placeholder
+  if (!mapboxToken || mapboxToken.includes('your_token_here')) {
+    console.warn('StaticCityMap: No valid Mapbox token configured');
+    return <MapPlaceholder cityName={cityName} stateAbbr={stateAbbr} className={className} />;
+  }
+
+  try {
+    // Step 1: Geocode using Mapbox Geocoding API
+    const query = encodeURIComponent(`${cityName}, ${stateAbbr}, USA`);
+    const geocodingUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${query}.json?access_token=${mapboxToken}&limit=1&types=place`;
+
+    let lon: number;
+    let lat: number;
+
+    const geocodingResponse = await fetch(geocodingUrl, {
+      next: { revalidate: 2592000 }, // Cache for 30 days
+    });
+
+    if (!geocodingResponse.ok) {
+      console.warn(`StaticCityMap: Mapbox geocoding failed for ${cityName}, ${stateAbbr}: ${geocodingResponse.status}`);
+      return <MapPlaceholder cityName={cityName} stateAbbr={stateAbbr} className={className} />;
+    }
+
+    const geocodingData = await geocodingResponse.json();
+
+    if (!geocodingData.features || geocodingData.features.length === 0) {
+      console.warn(`StaticCityMap: No geocoding results for ${cityName}, ${stateAbbr}`);
+      return <MapPlaceholder cityName={cityName} stateAbbr={stateAbbr} className={className} />;
+    }
+
+    [lon, lat] = geocodingData.features[0].center;
+
+    // Step 2: Construct Mapbox Static Images API URL with coordinates
+    const markerOverlay = `pin-l+4f46e5(${lon},${lat})`; // Large pin, brand purple
+    const style = 'mapbox/streets-v12'; // Modern, detailed street style
+    const width = 600;
+    const height = 400;
+    const retina = '@2x';
+    const zoom = 12; // City-level zoom
+
+    const mapUrl = `https://api.mapbox.com/styles/v1/${style}/static/${markerOverlay}/${lon},${lat},${zoom}/${width}x${height}${retina}?access_token=${mapboxToken}&attribution=false&logo=false`;
+
+    return (
+      <div className={`relative rounded-xl overflow-hidden shadow-md border border-gray-200 ${className}`}>
+        <img
+          src={mapUrl}
+          alt={`Map of ${cityName}, ${stateAbbr}`}
+          className="w-full h-full object-cover"
+          width={width}
+          height={height}
+          loading="lazy"
+        />
+
+        {/* Attribution overlay (required by Mapbox ToS) */}
+        <div className="absolute bottom-0 right-0 bg-white/95 backdrop-blur-sm px-2 py-1 text-xs text-gray-600 rounded-tl-md">
+          © <a href="https://www.mapbox.com/about/maps/" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-600">Mapbox</a> © <a href="http://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-600">OpenStreetMap</a>
+        </div>
+      </div>
+    );
+  } catch (error) {
+    console.error('StaticCityMap: Unexpected error for', cityName, stateAbbr, ':', error);
+    return <MapPlaceholder cityName={cityName} stateAbbr={stateAbbr} className={className} />;
+  }
 }
 
 function MapPlaceholder({ cityName, stateAbbr, className }: StaticCityMapProps) {
@@ -24,7 +86,7 @@ function MapPlaceholder({ cityName, stateAbbr, className }: StaticCityMapProps) 
     >
       <div className="text-center p-8">
         <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-500 text-white rounded-full mb-3">
-          <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
