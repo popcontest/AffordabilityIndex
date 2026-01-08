@@ -45,7 +45,7 @@ export function AffordabilityBar({
 
   return (
     <div className={`w-full ${className}`}>
-      <div className="relative w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+      <div className="relative w-full h-2 bg-gray-200 rounded-full overflow-hidden" role="progressbar" aria-valuenow={ratio} aria-valuemin={minRatio} aria-valuemax={maxRatio} aria-label={`Affordability ratio: ${ratio.toFixed(1)}. ${label.label}. ${label.description}`}>
         <div
           className={`h-full rounded-full transition-all duration-500 ease-out ${getBarColor()}`}
           style={{ width: `${percentage}%` }}
@@ -91,7 +91,7 @@ export function AffordabilityBarCompact({
 
   return (
     <div className={`flex items-center gap-2 ${className}`}>
-      <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+      <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden" role="progressbar" aria-valuenow={ratio} aria-valuemin={1} aria-valuemax={10} aria-label={`Affordability ratio: ${ratio.toFixed(1)} - ${label.label}`}>
         <div
           className={`h-full rounded-full transition-all duration-300 ${getBarColor()}`}
           style={{ width: `${width}%` }}

@@ -169,12 +169,16 @@ export function SearchBox() {
   }
 
   return (
-    <div ref={searchRef} className="relative w-full">
+    <div ref={searchRef} className="relative w-full" role="search">
+      <label htmlFor="search-input" className="sr-only">
+        Search by city, state, or ZIP code
+      </label>
       {/* Search Input + Button */}
       <div className="flex flex-col sm:flex-row gap-2">
         <div className="relative flex-1">
           <input
             ref={inputRef}
+            id="search-input"
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -182,16 +186,22 @@ export function SearchBox() {
             placeholder="Search by city, state, or ZIP code..."
             className="w-full px-4 py-3 text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm"
             autoComplete="off"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={isOpen && results.length > 0}
+            aria-controls="search-results-list"
+            aria-activedescendant={selectedIndex >= 0 ? `search-result-${selectedIndex}` : undefined}
           />
         </div>
         <button
           onClick={handleSearch}
           disabled={isLoading || query.trim().length === 0}
           className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+          aria-label="Search"
         >
           {isLoading ? (
             <span className="flex items-center justify-center">
-              <svg className="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <svg className="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
@@ -205,56 +215,67 @@ export function SearchBox() {
 
       {/* Loading Skeleton */}
       {isOpen && isLoading && query.trim().length >= 2 && (
-        <div className="absolute z-50 w-full mt-2 bg-white border border-gray-200 rounded-lg shadow-lg max-h-96 overflow-y-auto">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="px-4 py-3 border-b border-gray-100 last:border-0">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0 space-y-2">
-                  <div className="skeleton h-5 w-48"></div>
-                  <div className="skeleton h-3 w-20"></div>
-                </div>
-                <div className="flex-shrink-0">
-                  <div className="skeleton h-5 w-12"></div>
-                </div>
-              </div>
-            </div>
-          ))}
+        <div
+          className="absolute z-50 w-full mt-2 bg-white border border-gray-200 rounded-lg shadow-lg max-h-96 overflow-y-auto"
+          role="status"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <div className="px-4 py-3 text-sm text-gray-600">
+            Searching...
+          </div>
         </div>
       )}
 
       {/* Results Dropdown */}
       {isOpen && !isLoading && results.length > 0 && (
-        <div className="absolute z-50 w-full mt-2 bg-white border border-gray-200 rounded-lg shadow-lg max-h-96 overflow-y-auto">
+        <ul
+          id="search-results-list"
+          className="absolute z-50 w-full mt-2 bg-white border border-gray-200 rounded-lg shadow-lg max-h-96 overflow-y-auto"
+          role="listbox"
+          aria-label="Search results"
+        >
           {results.map((result, index) => (
-            <button
+            <li
               key={`${result.geoType}-${result.geoId}`}
-              onClick={() => navigateToResult(result)}
-              className={`w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 last:border-0 transition ${
-                index === selectedIndex ? 'bg-blue-50' : ''
-              }`}
+              id={`search-result-${index}`}
+              role="option"
+              aria-selected={selectedIndex === index}
             >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-gray-900 truncate">
-                    {result.label}
-                  </div>
-                  <div className="text-xs text-gray-500 mt-0.5">
-                    {result.geoType === 'ZCTA'
-                      ? 'ZIP Code'
-                      : result.geoType === 'STATE'
-                      ? 'State Overview'
-                      : 'City'}
+              <button
+                onClick={() => navigateToResult(result)}
+                className={`w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 last:border-0 transition ${
+                  index === selectedIndex ? 'bg-blue-50' : ''
+                }`}
+                tabIndex={selectedIndex === index ? 0 : -1}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-gray-900 truncate">
+                      {result.label}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      {result.geoType === 'ZCTA'
+                        ? 'ZIP Code'
+                        : result.geoType === 'STATE'
+                        ? 'State Overview'
+                        : 'City'}
+                    </div>
                   </div>
                 </div>
-              </div>
-            </button>
+              </button>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
 
       {/* No results message */}
       {isOpen && !isLoading && query.trim().length >= 2 && results.length === 0 && (
-        <div className="absolute z-50 w-full mt-2 bg-white border border-gray-200 rounded-lg shadow-lg px-4 py-6 text-center">
+        <div
+          className="absolute z-50 w-full mt-2 bg-white border border-gray-200 rounded-lg shadow-lg px-4 py-6 text-center"
+          role="status"
+          aria-live="polite"
+        >
           <p className="text-sm text-gray-600">
             No results found for &ldquo;{query}&rdquo;
           </p>

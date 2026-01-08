@@ -40,7 +40,7 @@ export function CostBreakdownChart({ breakdown, personaLabel }: CostBreakdownCha
       </h3>
 
       {/* Stacked Bar Chart */}
-      <div className="mb-6">
+      <div className="mb-6" role="img" aria-label={`Cost breakdown chart showing ${costs.length} categories for ${personaLabel}`}>
         <div className="flex h-12 rounded-lg overflow-hidden border border-gray-300">
           {costs.map((cost, index) => {
             const percentage = (cost.amount / total) * 100;
@@ -52,9 +52,11 @@ export function CostBreakdownChart({ breakdown, personaLabel }: CostBreakdownCha
                 className={`${cost.color} relative group`}
                 style={{ width: `${percentage}%` }}
                 title={`${cost.label}: ${formatCurrency(cost.amount)} (${percentage.toFixed(1)}%)`}
+                role="img"
+                aria-label={`${cost.label}: ${formatCurrency(cost.amount)}, ${percentage.toFixed(1)}% of total`}
               >
                 {percentage > 8 && (
-                  <div className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-white">
+                  <div className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-white" aria-hidden="true">
                     {percentage.toFixed(0)}%
                   </div>
                 )}

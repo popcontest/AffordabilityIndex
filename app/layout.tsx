@@ -4,6 +4,7 @@ import Script from "next/script";
 import "./globals.css";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
+import { WebVitals } from "@/components/WebVitals";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -63,11 +64,26 @@ export default function RootLayout({
           `}
         </Script>
 
+        {/* Skip Links for Keyboard Navigation */}
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-blue-600 focus:text-white focus:rounded-lg focus:font-medium focus:shadow-lg"
+        >
+          Skip to main content
+        </a>
+        <a
+          href="#search"
+          className="sr-only focus:not-sr-only focus:absolute focus:top-16 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-blue-600 focus:text-white focus:rounded-lg focus:font-medium focus:shadow-lg"
+        >
+          Skip to search
+        </a>
+
         <Header />
-        <main className="flex-1">
+        <main id="main-content" className="flex-1" role="main">
           {children}
         </main>
         <Footer />
+        <WebVitals />
       </body>
     </html>
   );

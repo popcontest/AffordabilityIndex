@@ -82,13 +82,13 @@ export function formatCurrency(value: number | null): string {
 }
 
 /**
- * Format ratio as decimal with 2 places
+ * Format ratio as decimal with 1 place
  */
 export function formatRatio(value: number | null): string {
   if (!isValidNumber(value)) {
     return '—';
   }
-  return value.toFixed(2);
+  return value.toFixed(1);
 }
 
 /**

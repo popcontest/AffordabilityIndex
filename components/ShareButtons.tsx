@@ -89,15 +89,16 @@ export function ShareButtons({ title, url, description }: ShareButtonsProps) {
       {/* Copy Link */}
       <button
         onClick={copyLink}
-        className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-gray-100 hover:bg-green-500 hover:text-white transition-colors duration-200"
-        aria-label="Copy link"
+        className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-gray-100 hover:bg-green-500 hover:text-white transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+        aria-label={copied ? "Link copied!" : "Copy link"}
       >
+        <span className="sr-only">{copied ? 'Link copied!' : 'Copy link to clipboard'}</span>
         {copied ? (
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
         ) : (
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
           </svg>
         )}

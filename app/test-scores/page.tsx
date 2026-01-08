@@ -86,9 +86,9 @@ export default async function TestScoresPage() {
                       <div className="text-sm text-gray-600 mt-1 grid grid-cols-2 gap-x-4">
                         <div>Home Value: ${item.homeValue?.toLocaleString()}</div>
                         <div>Income: ${item.medianIncome?.toLocaleString()}</div>
-                        <div>Simple Ratio: {item.simpleRatio?.toFixed(2)}</div>
+                        <div>Simple Ratio: {item.simpleRatio?.toFixed(1)}</div>
                         <div className="font-bold text-green-600">
-                          True Score: {item.trueAffordabilityScore?.toFixed(2)}
+                          True Score: {item.trueAffordabilityScore?.toFixed(1)}
                         </div>
                       </div>
                       <div className="mt-2 text-sm bg-green-50 inline-block px-3 py-1 rounded">
@@ -129,9 +129,9 @@ export default async function TestScoresPage() {
                       <div className="text-sm text-gray-600 mt-1 grid grid-cols-2 gap-x-4">
                         <div>Home Value: ${item.homeValue?.toLocaleString()}</div>
                         <div>Income: ${item.medianIncome?.toLocaleString()}</div>
-                        <div>Simple Ratio: {item.simpleRatio?.toFixed(2)}</div>
+                        <div>Simple Ratio: {item.simpleRatio?.toFixed(1)}</div>
                         <div className="font-bold text-red-600">
-                          True Score: {item.trueAffordabilityScore?.toFixed(2)}
+                          True Score: {item.trueAffordabilityScore?.toFixed(1)}
                         </div>
                       </div>
                       <div className="mt-2 text-sm bg-red-50 inline-block px-3 py-1 rounded">

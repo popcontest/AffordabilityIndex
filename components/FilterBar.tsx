@@ -62,26 +62,31 @@ export function FilterBar({
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* State Filter */}
         <div className="relative">
-          <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+          <label id="state-filter-label" className="block text-xs font-semibold text-gray-700 mb-1.5">
             Filter by State
           </label>
           <div className="relative">
             <button
               onClick={() => setIsStateDropdownOpen(!isStateDropdownOpen)}
+              aria-expanded={isStateDropdownOpen}
+              aria-haspopup="listbox"
+              aria-labelledby="state-filter-label"
               className="w-full px-3 py-2 text-left bg-white border border-gray-300 rounded-lg hover:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
             >
               <span className={selectedState === 'all' ? 'text-gray-500' : 'text-gray-900'}>
                 {selectedState === 'all' ? 'All States' : US_STATES.find(s => s.abbr === selectedState)?.name || selectedState}
               </span>
-              <svg className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </button>
 
             {isStateDropdownOpen && (
-              <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+              <div role="listbox" aria-labelledby="state-filter-label" className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
                 <button
                   onClick={() => handleStateChange('all')}
+                  role="option"
+                  aria-selected={selectedState === 'all'}
                   className={`block w-full text-left px-3 py-2 text-sm hover:bg-blue-50 ${selectedState === 'all' ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-900'}`}
                 >
                   All States
@@ -90,6 +95,8 @@ export function FilterBar({
                   <button
                     key={state.abbr}
                     onClick={() => handleStateChange(state.abbr)}
+                    role="option"
+                    aria-selected={selectedState === state.abbr}
                     className={`block w-full text-left px-3 py-2 text-sm hover:bg-blue-50 ${selectedState === state.abbr ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-900'}`}
                   >
                     {state.name}
@@ -102,10 +109,11 @@ export function FilterBar({
 
         {/* Affordability Level Filter */}
         <div>
-          <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+          <label htmlFor="affordability-level-select" className="block text-xs font-semibold text-gray-700 mb-1.5">
             Affordability Level
           </label>
           <select
+            id="affordability-level-select"
             value={selectedLevel}
             onChange={(e) => handleLevelChange(e.target.value as AffordabilityFilter)}
             className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg hover:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
@@ -120,10 +128,11 @@ export function FilterBar({
 
         {/* Sort By */}
         <div>
-          <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+          <label htmlFor="sort-by-select" className="block text-xs font-semibold text-gray-700 mb-1.5">
             Sort By
           </label>
           <select
+            id="sort-by-select"
             value={sortBy}
             onChange={(e) => handleSortChange(e.target.value as SortOption)}
             className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg hover:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"

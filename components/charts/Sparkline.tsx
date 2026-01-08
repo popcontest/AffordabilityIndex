@@ -61,15 +61,17 @@ export const Sparkline = memo(function Sparkline({
 
   return (
     <ResponsiveContainer width={width} height={height}>
-      <LineChart data={chartData}>
-        <Line
-          type="monotone"
-          dataKey="value"
-          stroke={lineColor}
-          strokeWidth={1.5}
-          dot={false}
-        />
-      </LineChart>
+      <div role="img" aria-label={`Trend chart showing ${autoTrend === 'up' ? 'upward' : autoTrend === 'down' ? 'downward' : 'neutral'} trend from ${data[0].toFixed(0)} to ${data[data.length - 1].toFixed(0)}`}>
+        <LineChart data={chartData}>
+          <Line
+            type="monotone"
+            dataKey="value"
+            stroke={lineColor}
+            strokeWidth={1.5}
+            dot={false}
+          />
+        </LineChart>
+      </div>
     </ResponsiveContainer>
   );
 });
