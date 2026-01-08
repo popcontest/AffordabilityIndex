@@ -52,12 +52,20 @@ export interface CostBreakdown {
   childcare: number;
   healthcare: number;
 
+  // NEW: Total other expenses
+  otherExpenses: number;        // Sum of all fixed costs except housing
+  monthlyOtherExpenses: number;  // otherExpenses / 12
+
   // Net available
   netDisposableIncome: number;
 
-  // Housing costs
+  // Housing costs (FIXED: mortgage + insurance only, NO property tax)
   annualHousingCost: number;
   monthlyHousingCost: number;
+
+  // Total fixed costs (NEW)
+  annualFixedCosts: number;      // otherExpenses + annualHousingCost
+  monthlyFixedCosts: number;     // annualFixedCosts / 12
 
   // Final score
   trueAffordabilityScore: number;
@@ -327,20 +335,27 @@ export async function calculateTrueAffordability(
   // 8. Calculate net disposable income
   const netDisposableIncome = income - incomeTax - propertyTax - transportation - childcare - healthcare;
 
-  // 9. Calculate annual housing cost
+  // 9. Calculate other expenses total (NEW)
+  const otherExpenses = incomeTax + propertyTax + transportation + childcare + healthcare;
+  const monthlyOtherExpenses = otherExpenses / 12;
+
+  // 10. Calculate annual housing cost (FIXED: mortgage + insurance only, NO property tax)
   const downPayment = homeValue * downPaymentPct;
   const loanAmount = homeValue - downPayment;
   const monthlyPI = calculateMonthlyMortgage(loanAmount, mortgageRate);
-  const monthlyPropTax = propertyTax / 12;
   const monthlyInsurance = (homeValue * HOME_INSURANCE_RATE) / 12;
-  const monthlyHousingCost = monthlyPI + monthlyPropTax + monthlyInsurance;
+  const monthlyHousingCost = monthlyPI + monthlyInsurance;  // NO property tax
   const annualHousingCost = monthlyHousingCost * 12;
 
-  // 10. Calculate True Affordability Score
+  // 11. Calculate total fixed costs (NEW)
+  const annualFixedCosts = otherExpenses + annualHousingCost;
+  const monthlyFixedCosts = annualFixedCosts / 12;
+
+  // 12. Calculate True Affordability Score
   const trueAffordabilityScore = netDisposableIncome / annualHousingCost;
   const affordabilityTier = getAffordabilityTier(trueAffordabilityScore);
 
-  // 11. Calculate money left over
+  // 13. Calculate money left over
   const annualLeftOver = netDisposableIncome - annualHousingCost;
   const monthlyLeftOver = annualLeftOver / 12;
 
@@ -351,9 +366,13 @@ export async function calculateTrueAffordability(
     transportation,
     childcare,
     healthcare,
+    otherExpenses,           // NEW
+    monthlyOtherExpenses,    // NEW
     netDisposableIncome,
     annualHousingCost,
     monthlyHousingCost,
+    annualFixedCosts,        // NEW
+    monthlyFixedCosts,       // NEW
     trueAffordabilityScore,
     affordabilityTier,
     annualLeftOver,

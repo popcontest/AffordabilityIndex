@@ -37,6 +37,9 @@ export function PersonaComparisonTable({ personas, cityName }: PersonaComparison
                 Income
               </th>
               <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Other Expenses
+              </th>
+              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Monthly Housing
               </th>
               <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -68,6 +71,12 @@ export function PersonaComparisonTable({ personas, cityName }: PersonaComparison
                       {formatCurrency(breakdown.grossIncome)}
                     </div>
                     <div className="text-xs text-gray-500">per year</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right">
+                    <div className="text-sm text-gray-900">
+                      {formatCurrency(breakdown.monthlyOtherExpenses)}
+                    </div>
+                    <div className="text-xs text-gray-500">per month</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right">
                     <div className="text-sm text-gray-900">
@@ -117,9 +126,16 @@ export function PersonaComparisonTable({ personas, cityName }: PersonaComparison
       </div>
 
       <div className="p-4 bg-gray-50 border-t border-gray-200">
-        <div className="text-xs text-gray-600">
-          <strong>True Affordability Score:</strong> Higher is better. Calculated as Net Disposable Income ÷ Annual Housing Cost.
-          Accounts for income tax, property tax, transportation, childcare, and healthcare costs.
+        <div className="text-xs text-gray-600 space-y-1">
+          <div>
+            <strong>True Affordability Score:</strong> Higher is better. Calculated as Net Disposable Income ÷ Annual Housing Cost.
+          </div>
+          <div>
+            <strong>Other Expenses</strong> include: income tax, property tax, transportation, healthcare, and childcare (if applicable).
+          </div>
+          <div>
+            <strong>Monthly Housing</strong> includes: mortgage (principal + interest) and homeowners insurance.
+          </div>
         </div>
       </div>
     </div>
