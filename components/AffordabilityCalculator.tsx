@@ -3,6 +3,9 @@
 import { useState } from 'react';
 import { CheckIcon, AlertIcon } from './InsightIcon';
 import { DisclaimerBox } from './DisclaimerBox';
+import { ExampleListings } from './ExampleListings';
+import { ActionRecommendations } from './ActionRecommendations';
+import { SensitivityAnalysis } from './SensitivityAnalysis';
 
 interface AffordabilityCalculatorProps {
   medianHomeValue: number;
@@ -180,6 +183,20 @@ export function AffordabilityCalculator({
           </div>
         </div>
 
+        {/* ActionRecommendations - Contextual next steps */}
+        <ActionRecommendations
+          result={{
+            canAffordMedian,
+            affordableHomePrice,
+            medianHomeValue,
+            income,
+            monthlyPayment: totalMonthlyPayment,
+            percentOfHomesAffordable,
+          }}
+          cityName={cityName}
+          stateAbbr={stateAbbr}
+        />
+
         {/* Payment Breakdown */}
         <details className="text-sm">
           <summary className="cursor-pointer text-blue-600 hover:text-blue-800 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 rounded">
@@ -251,6 +268,14 @@ export function AffordabilityCalculator({
         </div>
       </details>
 
+      {/* SensitivityAnalysis - What-if scenarios */}
+      <SensitivityAnalysis
+        baseIncome={income}
+        baseHomePrice={affordableHomePrice}
+        baseDownPaymentPercent={downPaymentPercent}
+        baseMonthlyPayment={totalMonthlyPayment}
+      />
+
       {/* Limitations Explanation */}
       <div className="mt-4 text-xs text-gray-600 bg-gray-50 rounded-lg p-3 border border-gray-200">
         <div className="font-medium text-gray-900 mb-1">Important Limitations:</div>
@@ -267,6 +292,14 @@ export function AffordabilityCalculator({
       </div>
 
       <DisclaimerBox variant="calculator" />
+
+      {/* Example Listings - Smart price filtering based on user's budget */}
+      <ExampleListings
+        cityName={cityName}
+        stateAbbr={stateAbbr}
+        medianHomeValue={medianHomeValue}
+        userAffordability={affordableHomePrice}
+      />
     </div>
   );
 }

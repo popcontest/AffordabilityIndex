@@ -75,51 +75,29 @@ export function ScoreHero({ score, locationName, requiredIncome }: ScoreHeroProp
         </div>
 
         {/* Score explanation */}
-        <div className="text-lg text-gray-600 mb-3 font-medium">
-          Affordability Score (0-100)
+        <div className="text-base text-gray-600 mb-2">
+          <strong>Higher scores = more affordable.</strong> Combines housing, food, healthcare, and transportation costs.
         </div>
 
         {/* Label */}
-        <div className="text-2xl font-bold text-gray-800 mb-4">
+        <div className="text-2xl font-bold text-gray-800 mb-6">
           <span className={accentClass}>{label}</span> affordability
         </div>
 
-        {/* Score meaning explanation */}
-        <div className="text-base text-gray-700 bg-white/60 rounded-lg px-6 py-3 mb-4 max-w-2xl mx-auto border border-gray-200">
-          <strong>Higher scores = more affordable.</strong> This score of <strong>{Math.round(overallScore)}</strong> means {locationName} is more affordable than <strong>{Math.round(overallScore)}%</strong> of US cities.
-        </div>
-
-        {/* Concrete example - what the score means */}
-        <div className="text-sm text-gray-700 bg-white/40 rounded-lg px-5 py-3 mb-4 max-w-2xl mx-auto border border-gray-200">
-          <div className="font-medium text-gray-900 mb-1">What this means in practice:</div>
-          {overallScore >= 75 && (
-            <>A score of {Math.round(overallScore)} puts this area in the top quartile for affordability. Example: If you earn <strong>$75,000/year</strong>, a typical home here might cost <strong>$187,500</strong> (2.5× income), compared to <strong>$450,000</strong> (6.0× income) in expensive coastal cities.</>
-          )}
-          {overallScore >= 60 && overallScore < 75 && (
-            <>A score of {Math.round(overallScore)} indicates above-average affordability. Most households can comfortably afford homes here without spending more than <strong>3-4× their annual income</strong> on housing.</>
-          )}
-          {overallScore >= 45 && overallScore < 60 && (
-            <>A score of {Math.round(overallScore)} means homes cost about <strong>4-5× typical incomes</strong> here. Many buyers need to budget carefully or consider smaller homes to stay affordable.</>
-          )}
-          {overallScore < 45 && (
-            <>A score of {Math.round(overallScore)} indicates challenging affordability. Typical homes cost <strong>{(overallScore < 25) ? '7-10×' : '5-7×'} local incomes</strong>, making ownership difficult for median-income households.</>
-          )}
-        </div>
-
-        {/* Emotional context - what this score means */}
-        <div className="text-lg text-gray-700 leading-relaxed max-w-3xl mx-auto mt-6">
-          {overallScore >= 75 && (
-            <>One of the most affordable places in America. Homeownership is within reach for most households.</>
-          )}
-          {overallScore >= 60 && overallScore < 75 && (
-            <>Solid affordability with reasonable housing costs relative to local incomes.</>
-          )}
-          {overallScore >= 45 && overallScore < 60 && (
-            <>Housing costs are stretching budgets. Many households need careful planning to afford homeownership.</>
-          )}
-          {overallScore < 45 && (
-            <>Housing affordability is a serious challenge. Only higher-income households can comfortably afford homes here.</>
-          )}
+        {/* Quick insights - 3 bullet points max */}
+        <div className="text-sm text-gray-700 space-y-2 max-w-2xl mx-auto mb-8">
+          <div className="flex items-start gap-2">
+            <span className="text-ai-warm font-bold">•</span>
+            <span>More affordable than <strong>{Math.round(overallScore)}%</strong> of US cities</span>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="text-ai-warm font-bold">•</span>
+            <span>Homes cost <strong>{((5 - (overallScore / 20)).toFixed(1))}×</strong> median income (vs 4.5× national avg)</span>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="text-ai-warm font-bold">•</span>
+            <span>{overallScore >= 60 ? 'Great for' : 'Consider for'} {overallScore >= 60 ? 'families & retirees' : 'budget-conscious buyers'}</span>
+          </div>
         </div>
 
         {/* Required Family Income - Above Fold Feature */}

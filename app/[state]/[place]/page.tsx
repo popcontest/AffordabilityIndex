@@ -30,6 +30,9 @@ import { ScoreBreakdownPanel } from '@/components/ScoreBreakdownPanel';
 import { TrueAffordabilitySection } from '@/components/TrueAffordabilitySection';
 import { StaticCityMap } from '@/components/StaticCityMap';
 import { DataSourceBadge } from '@/components/DataSourceBadge';
+import { QuickActions } from '@/components/QuickActions';
+import { SaveLocationButton } from '@/components/SaveLocationButton';
+import { QuickTakeSummary } from '@/components/QuickTakeSummary';
 import {
   formatCurrency,
   formatRatio,
@@ -227,16 +230,25 @@ async function renderCityDashboard(
 
       {/* Breadcrumb Navigation */}
       <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3" aria-label="Breadcrumb">
-        <div className="flex items-center space-x-2 text-sm text-gray-500">
-          <Link href="/" className="hover:text-blue-600 transition">
-            Home
-          </Link>
-          <span>/</span>
-          <Link href={`/${state.slug}/`} className="hover:text-blue-600 transition">
-            {state.name}
-          </Link>
-          <span>/</span>
-          <span className="text-gray-700 font-medium">{city.name}</span>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2 text-sm text-gray-500">
+            <Link href="/" className="hover:text-blue-600 transition">
+              Home
+            </Link>
+            <span>/</span>
+            <Link href={`/${state.slug}/`} className="hover:text-blue-600 transition">
+              {state.name}
+            </Link>
+            <span>/</span>
+            <span className="text-gray-700 font-medium">{city.name}</span>
+          </div>
+          <SaveLocationButton
+            geoType="CITY"
+            geoId={city.cityId}
+            name={city.name}
+            stateAbbr={state.abbr}
+            variant="compact"
+          />
         </div>
       </nav>
 
@@ -266,6 +278,28 @@ async function renderCityDashboard(
             showUpdateFrequency={true}
           />
         </div>
+
+        {/* Quick Actions Bar - Prominent CTAs */}
+        <div className="mt-6">
+          <QuickActions
+            cityName={city.name}
+            stateAbbr={state.abbr}
+            calculatorSectionId="calculator"
+          />
+        </div>
+
+        {/* Quick Take Summary - 3 key insights */}
+        {v2Score && (
+          <div className="mt-6">
+            <QuickTakeSummary
+              score={v2Score}
+              cityName={city.name}
+              stateRatio={stateAvg?.ratio ?? null}
+              nationalRatio={4.5}
+              population={city.population}
+            />
+          </div>
+        )}
       </div>
 
       <DashboardShell
@@ -292,6 +326,18 @@ async function renderCityDashboard(
 
         {hasMetrics && (
           <>
+            {/* Affordability Calculator - Interactive exploration (MOVED UP) */}
+            {metrics.homeValue && metrics.income && (
+              <div className="mb-12" id="calculator">
+                <AffordabilityCalculator
+                  medianHomeValue={metrics.homeValue}
+                  medianIncome={metrics.income}
+                  cityName={city.name}
+                  stateAbbr={state.abbr}
+                />
+              </div>
+            )}
+
             {/* True Affordability Section */}
             <div className="mb-12">
               <h2 className="text-2xl font-bold text-gray-900 mb-4">True Affordability by Household Type</h2>
@@ -343,18 +389,6 @@ async function renderCityDashboard(
                 <Panel title="How Does This Compare?" subtitle="Compare to state and national averages">
                   <BenchmarkTable rows={dashboardData.benchmarks} />
                 </Panel>
-              </div>
-            )}
-
-            {/* Affordability Calculator - Interactive exploration */}
-            {metrics.homeValue && metrics.income && (
-              <div className="mb-12">
-                <AffordabilityCalculator
-                  medianHomeValue={metrics.homeValue}
-                  medianIncome={metrics.income}
-                  cityName={city.name}
-                  stateAbbr={state.abbr}
-                />
               </div>
             )}
 

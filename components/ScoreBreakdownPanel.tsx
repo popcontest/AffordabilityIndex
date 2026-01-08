@@ -33,8 +33,8 @@ const COMPONENT_WEIGHTS = {
 };
 
 export function ScoreBreakdownPanel({ score }: ScoreBreakdownPanelProps) {
-  // Default to EXPANDED for better visibility
-  const [isExpanded, setIsExpanded] = useState(true);
+  // Default to COLLAPSED to reduce information overload
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const { version, overallScore, grade, housingScore, essentialsScore, taxesScore, healthcareScore, notes } = score;
 

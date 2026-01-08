@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { PersonaComparisonTable } from './PersonaComparisonTable';
+import { PersonaComparisonChart } from './PersonaComparisonChart';
 import { CostBreakdown } from '@/lib/trueAffordability';
 import { TrueAffordabilitySkeleton } from './skeletons';
 
@@ -33,6 +34,8 @@ export function TrueAffordabilitySection({ geoType, geoId, cityName }: TrueAffor
   const [personaData, setPersonaData] = useState<PersonaData[]>(
     PERSONAS.map(p => ({ ...p, breakdown: null, loading: true, error: null }))
   );
+  const [selectedPersona, setSelectedPersona] = useState<string>('family'); // Default to family
+  const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
     // Helper function to fetch with timeout
@@ -158,7 +161,40 @@ export function TrueAffordabilitySection({ geoType, geoId, cityName }: TrueAffor
 
   return (
     <div className="space-y-6">
-      <PersonaComparisonTable personas={validPersonas} cityName={cityName} />
+      {/* Household Type Selector */}
+      <div className="flex flex-wrap items-center gap-4 bg-gray-50 rounded-lg p-4 border border-gray-200">
+        <label htmlFor="persona-select" className="text-sm font-medium text-gray-700">
+          I am a...
+        </label>
+        <select
+          id="persona-select"
+          value={selectedPersona}
+          onChange={(e) => {
+            setSelectedPersona(e.target.value);
+            setShowAll(false);
+          }}
+          className="flex-1 min-w-[200px] px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition text-sm"
+        >
+          {PERSONAS.map((persona) => (
+            <option key={persona.type} value={persona.type}>
+              {persona.label} - {persona.description}
+            </option>
+          ))}
+        </select>
+        <button
+          onClick={() => setShowAll(!showAll)}
+          className="px-4 py-2 text-sm font-medium text-blue-700 border-2 border-blue-300 rounded-lg hover:bg-blue-50 transition"
+        >
+          {showAll ? 'Show One' : 'Compare All'}
+        </button>
+      </div>
+
+      {/* Show either single persona or all personas */}
+      <PersonaComparisonChart
+        personas={showAll ? validPersonas : validPersonas.filter(p => p.type === selectedPersona)}
+        cityName={cityName}
+        showAll={showAll}
+      />
 
       {anyErrors && (
         <div className="text-xs text-gray-500 italic">

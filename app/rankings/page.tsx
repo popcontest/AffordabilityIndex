@@ -5,6 +5,7 @@ import { JsonLd, generateBreadcrumbJsonLd } from '@/components/JsonLd';
 import { SearchBox } from '@/components/SearchBox';
 import { getAllStatesRanked } from '@/lib/data';
 import { getLargeCitiesAffordable, getMidSizeCitiesAffordable, getTownsAffordable } from '@/lib/data';
+import { getTownsExpensive } from '@/lib/data';
 import { formatCurrency } from '@/lib/viewModels';
 import { stateFromAbbr } from '@/lib/usStates';
 
@@ -36,7 +37,7 @@ export default async function RankingsPage() {
     getAllStatesRanked(),
     getLargeCitiesAffordable(20),
     getMidSizeCitiesAffordable(20),
-    getTownsAffordable(20),
+    getTownsExpensive(20), // Least affordable towns (worst at top)
   ]);
 
   return (
@@ -263,12 +264,12 @@ export default async function RankingsPage() {
             </div>
           </section>
 
-          {/* Towns Rankings */}
+          {/* Towns Rankings - Least Affordable */}
           <section className="mb-16">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h2 className="text-3xl font-bold text-gray-900">Small Towns</h2>
-                <p className="text-gray-600 mt-1">Towns under 50K population</p>
+                <h2 className="text-3xl font-bold text-gray-900">Least Affordable Small Towns</h2>
+                <p className="text-gray-600 mt-1">Towns under 50K population - ranked by highest cost (worst affordability first)</p>
               </div>
               <Link
                 href="/rankings/towns"
