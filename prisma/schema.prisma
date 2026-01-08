@@ -33,6 +33,7 @@ model GeoZcta {
   longitude  Float? // For distance calculations
 
   @@index([stateAbbr])
+  @@index([stateAbbr, latitude, longitude])
   @@map("geo_zcta")
 }
 
@@ -51,6 +52,7 @@ model GeoCity {
   @@index([stateAbbr, slug])
   @@index([stateAbbr, name])
   @@index([countyFips])
+  @@index([stateAbbr, population(sort: Desc)])
   @@map("geo_city")
 }
 
@@ -70,6 +72,8 @@ model MetricSnapshot {
 
   @@unique([geoType, geoId, asOfDate])
   @@index([geoType, geoId])
+  @@index([geoType, geoId, asOfDate(sort: Desc)])
+  @@index([geoType, ratio, asOfDate(sort: Desc)])
   @@index([asOfDate])
   @@map("metric_snapshot")
 }
@@ -465,6 +469,7 @@ model V2AffordabilityScore {
 
   @@unique([geoType, geoId])
   @@index([geoType, geoId])
+  @@index([geoType, compositeScore(sort: Desc)])
   @@index([compositeScore(sort: Desc)])
   @@map("v2_affordability_score")
 }
