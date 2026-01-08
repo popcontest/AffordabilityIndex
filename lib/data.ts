@@ -21,6 +21,11 @@ import type { BenchmarkRow, NearbyRow } from './viewModels';
 import type { ScoreBreakdown } from './scoreTypes';
 import { clampScore, scoreToGrade } from './scoring';
 import type { V2ScoreData } from './v2-scores';
+import {
+  NATIONAL_MEDIANS,
+  getStateFallbackMedians,
+  ensureValidBenchmarkData,
+} from './benchmarkConstants';
 
 // ============================================================================
 // Population Bucket Filters (Centralized)
@@ -1179,7 +1184,7 @@ export interface StateDashboardData {
  * @param placeParam - Place slug or slug-cityId compound (e.g., "portland" or "springfield-12345")
  * @returns Dashboard data with city, benchmarks, and nearby alternatives
  *
- * TODO: Add state and national benchmarks once we compute aggregates
+ * Benchmarks are computed using Postgres percentile_cont on latest city snapshots
  * TODO: Replace Prisma queries with cached data layer
  */
 export async function getCityDashboardData(
@@ -1323,7 +1328,7 @@ export async function getCityDashboardData(
  * @param zip - 5-digit ZIP code
  * @returns Dashboard data with ZCTA, benchmarks, and nearby alternatives
  *
- * TODO: Add state and national benchmarks once we compute aggregates
+ * Benchmarks are computed using Postgres percentile_cont on latest ZCTA snapshots
  * TODO: Replace Prisma queries with cached data layer
  */
 export async function getZipDashboardData(zip: string): Promise<ZipDashboardData> {
@@ -1363,92 +1368,222 @@ export async function getZipDashboardData(zip: string): Promise<ZipDashboardData
 
 /**
  * Compute state medians using Postgres percentile_cont on latest snapshots only
+ * Includes fallback to hardcoded state medians if database query fails or returns null
  */
 async function getStateMedians(stateAbbr: string): Promise<{
   ratio: number | null;
   homeValue: number | null;
   income: number | null;
 }> {
-  const result = await prisma.$queryRaw<Array<{
-    ratio_median: number | null;
-    home_value_median: number | null;
-    income_median: number | null;
-  }>>`
-    WITH latest AS (
-      SELECT DISTINCT ON ("geoType", "geoId")
-        "geoType", "geoId", "asOfDate", ratio, "homeValue", income
-      FROM metric_snapshot
-      WHERE "geoType" = 'CITY'
-        AND ratio IS NOT NULL
-        AND "homeValue" IS NOT NULL
-        AND income IS NOT NULL
-      ORDER BY "geoType", "geoId", "asOfDate" DESC
-    ),
-    scoped AS (
-      SELECT l.*
-      FROM latest l
-      JOIN geo_city gc ON gc."cityId" = l."geoId"
-      WHERE gc."stateAbbr" = ${stateAbbr}
-    )
-    SELECT
-      percentile_cont(0.5) WITHIN GROUP (ORDER BY ratio) AS ratio_median,
-      percentile_cont(0.5) WITHIN GROUP (ORDER BY "homeValue") AS home_value_median,
-      percentile_cont(0.5) WITHIN GROUP (ORDER BY income) AS income_median
-    FROM scoped;
-  `;
+  try {
+    const result = await prisma.$queryRaw<Array<{
+      ratio_median: number | null;
+      home_value_median: number | null;
+      income_median: number | null;
+    }>>`
+      WITH latest AS (
+        SELECT DISTINCT ON ("geoType", "geoId")
+          "geoType", "geoId", "asOfDate", ratio, "homeValue", income
+        FROM metric_snapshot
+        WHERE "geoType" = 'CITY'
+          AND ratio IS NOT NULL
+          AND "homeValue" IS NOT NULL
+          AND income IS NOT NULL
+        ORDER BY "geoType", "geoId", "asOfDate" DESC
+      ),
+      scoped AS (
+        SELECT l.*
+        FROM latest l
+        JOIN geo_city gc ON gc."cityId" = l."geoId"
+        WHERE gc."stateAbbr" = ${stateAbbr}
+      )
+      SELECT
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY ratio) AS ratio_median,
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY "homeValue") AS home_value_median,
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY income) AS income_median
+      FROM scoped;
+    `;
 
-  if (result.length === 0) {
-    return { ratio: null, homeValue: null, income: null };
+    if (result.length === 0) {
+      console.warn(`[Benchmark] No city data for state ${stateAbbr}, using fallback`);
+      return getStateFallbackMedians(stateAbbr);
+    }
+
+    const row = result[0];
+    const data = {
+      ratio: row.ratio_median,
+      homeValue: row.home_value_median ? Math.round(row.home_value_median) : null,
+      income: row.income_median ? Math.round(row.income_median) : null,
+    };
+
+    // Use fallback if all metrics are null
+    return ensureValidBenchmarkData(data);
+  } catch (error) {
+    console.error(`[Benchmark] Error computing city medians for ${stateAbbr}:`, error);
+    return getStateFallbackMedians(stateAbbr);
   }
-
-  const row = result[0];
-  return {
-    ratio: row.ratio_median,
-    homeValue: row.home_value_median ? Math.round(row.home_value_median) : null,
-    income: row.income_median ? Math.round(row.income_median) : null,
-  };
 }
 
 /**
  * Compute US medians using Postgres percentile_cont on latest snapshots only
+ * Includes fallback to hardcoded national medians if database query fails or returns null
  */
 async function getUSMedians(): Promise<{
   ratio: number | null;
   homeValue: number | null;
   income: number | null;
 }> {
-  const result = await prisma.$queryRaw<Array<{
-    ratio_median: number | null;
-    home_value_median: number | null;
-    income_median: number | null;
-  }>>`
-    WITH latest AS (
-      SELECT DISTINCT ON ("geoType", "geoId")
-        "geoType", "geoId", "asOfDate", ratio, "homeValue", income
-      FROM metric_snapshot
-      WHERE "geoType" = 'CITY'
-        AND ratio IS NOT NULL
-        AND "homeValue" IS NOT NULL
-        AND income IS NOT NULL
-      ORDER BY "geoType", "geoId", "asOfDate" DESC
-    )
-    SELECT
-      percentile_cont(0.5) WITHIN GROUP (ORDER BY ratio) AS ratio_median,
-      percentile_cont(0.5) WITHIN GROUP (ORDER BY "homeValue") AS home_value_median,
-      percentile_cont(0.5) WITHIN GROUP (ORDER BY income) AS income_median
-    FROM latest;
-  `;
+  try {
+    const result = await prisma.$queryRaw<Array<{
+      ratio_median: number | null;
+      home_value_median: number | null;
+      income_median: number | null;
+    }>>`
+      WITH latest AS (
+        SELECT DISTINCT ON ("geoType", "geoId")
+          "geoType", "geoId", "asOfDate", ratio, "homeValue", income
+        FROM metric_snapshot
+        WHERE "geoType" = 'CITY'
+          AND ratio IS NOT NULL
+          AND "homeValue" IS NOT NULL
+          AND income IS NOT NULL
+        ORDER BY "geoType", "geoId", "asOfDate" DESC
+      )
+      SELECT
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY ratio) AS ratio_median,
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY "homeValue") AS home_value_median,
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY income) AS income_median
+      FROM latest;
+    `;
 
-  if (result.length === 0) {
-    return { ratio: null, homeValue: null, income: null };
+    if (result.length === 0) {
+      console.warn('[Benchmark] No US city data, using national medians');
+      return NATIONAL_MEDIANS;
+    }
+
+    const row = result[0];
+    const data = {
+      ratio: row.ratio_median,
+      homeValue: row.home_value_median ? Math.round(row.home_value_median) : null,
+      income: row.income_median ? Math.round(row.income_median) : null,
+    };
+
+    // Use fallback if all metrics are null
+    return ensureValidBenchmarkData(data);
+  } catch (error) {
+    console.error('[Benchmark] Error computing US city medians:', error);
+    return NATIONAL_MEDIANS;
   }
+}
 
-  const row = result[0];
-  return {
-    ratio: row.ratio_median,
-    homeValue: row.home_value_median ? Math.round(row.home_value_median) : null,
-    income: row.income_median ? Math.round(row.income_median) : null,
-  };
+/**
+ * Compute state medians for ZCTAs using Postgres percentile_cont on latest snapshots only
+ * Includes fallback to hardcoded state medians if database query fails or returns null
+ */
+async function getStateMediansZCTA(stateAbbr: string): Promise<{
+  ratio: number | null;
+  homeValue: number | null;
+  income: number | null;
+}> {
+  try {
+    const result = await prisma.$queryRaw<Array<{
+      ratio_median: number | null;
+      home_value_median: number | null;
+      income_median: number | null;
+    }>>`
+      WITH latest AS (
+        SELECT DISTINCT ON ("geoType", "geoId")
+          "geoType", "geoId", "asOfDate", ratio, "homeValue", income
+        FROM metric_snapshot
+        WHERE "geoType" = 'ZCTA'
+          AND ratio IS NOT NULL
+          AND "homeValue" IS NOT NULL
+          AND income IS NOT NULL
+        ORDER BY "geoType", "geoId", "asOfDate" DESC
+      ),
+      scoped AS (
+        SELECT l.*
+        FROM latest l
+        JOIN geo_zcta gz ON gz.zcta = l."geoId"
+        WHERE gz."stateAbbr" = ${stateAbbr}
+      )
+      SELECT
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY ratio) AS ratio_median,
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY "homeValue") AS home_value_median,
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY income) AS income_median
+      FROM scoped;
+    `;
+
+    if (result.length === 0) {
+      console.warn(`[Benchmark] No ZCTA data for state ${stateAbbr}, using fallback`);
+      return getStateFallbackMedians(stateAbbr);
+    }
+
+    const row = result[0];
+    const data = {
+      ratio: row.ratio_median,
+      homeValue: row.home_value_median ? Math.round(row.home_value_median) : null,
+      income: row.income_median ? Math.round(row.income_median) : null,
+    };
+
+    // Use fallback if all metrics are null
+    return ensureValidBenchmarkData(data);
+  } catch (error) {
+    console.error(`[Benchmark] Error computing ZCTA medians for ${stateAbbr}:`, error);
+    return getStateFallbackMedians(stateAbbr);
+  }
+}
+
+/**
+ * Compute US medians for ZCTAs using Postgres percentile_cont on latest snapshots only
+ * Includes fallback to hardcoded national medians if database query fails or returns null
+ */
+async function getUSMediansZCTA(): Promise<{
+  ratio: number | null;
+  homeValue: number | null;
+  income: number | null;
+}> {
+  try {
+    const result = await prisma.$queryRaw<Array<{
+      ratio_median: number | null;
+      home_value_median: number | null;
+      income_median: number | null;
+    }>>`
+      WITH latest AS (
+        SELECT DISTINCT ON ("geoType", "geoId")
+          "geoType", "geoId", "asOfDate", ratio, "homeValue", income
+        FROM metric_snapshot
+        WHERE "geoType" = 'ZCTA'
+          AND ratio IS NOT NULL
+          AND "homeValue" IS NOT NULL
+          AND income IS NOT NULL
+        ORDER BY "geoType", "geoId", "asOfDate" DESC
+      )
+      SELECT
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY ratio) AS ratio_median,
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY "homeValue") AS home_value_median,
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY income) AS income_median
+      FROM latest;
+    `;
+
+    if (result.length === 0) {
+      console.warn('[Benchmark] No US ZCTA data, using national medians');
+      return NATIONAL_MEDIANS;
+    }
+
+    const row = result[0];
+    const data = {
+      ratio: row.ratio_median,
+      homeValue: row.home_value_median ? Math.round(row.home_value_median) : null,
+      income: row.income_median ? Math.round(row.income_median) : null,
+    };
+
+    // Use fallback if all metrics are null
+    return ensureValidBenchmarkData(data);
+  } catch (error) {
+    console.error('[Benchmark] Error computing US ZCTA medians:', error);
+    return NATIONAL_MEDIANS;
+  }
 }
 
 /**
@@ -1761,8 +1896,7 @@ async function getCityNearbyWorse(
 }
 
 /**
- * Get benchmark rows for a ZIP (this geo, state avg, US avg)
- * TODO: Implement state and national aggregates
+ * Get benchmark rows for a ZIP (this geo, state median, US median)
  */
 async function getZipBenchmarks(zcta: ZctaWithMetrics): Promise<BenchmarkRow[]> {
   const benchmarks: BenchmarkRow[] = [];
@@ -1775,8 +1909,27 @@ async function getZipBenchmarks(zcta: ZctaWithMetrics): Promise<BenchmarkRow[]> 
     income: zcta.metrics?.income ?? null,
   });
 
-  // TODO: State median
-  // TODO: US median
+  // State median - calculated using Postgres percentile_cont on latest ZCTA snapshots
+  if (zcta.stateAbbr) {
+    const stateMedians = await getStateMediansZCTA(zcta.stateAbbr);
+
+    benchmarks.push({
+      label: `${zcta.stateAbbr} State Median (ZCTA)`,
+      ratio: stateMedians.ratio,
+      homeValue: stateMedians.homeValue,
+      income: stateMedians.income,
+    });
+  }
+
+  // US median - calculated using Postgres percentile_cont on latest ZCTA snapshots
+  const usMedians = await getUSMediansZCTA();
+
+  benchmarks.push({
+    label: 'US National Median (ZCTA)',
+    ratio: usMedians.ratio,
+    homeValue: usMedians.homeValue,
+    income: usMedians.income,
+  });
 
   return benchmarks;
 }
@@ -4010,4 +4163,354 @@ export function shouldShowDemographics(
 
   // Show if at least 2 of 3 metrics are reliable
   return passingMetrics >= 2;
+}
+
+// ============================================================================
+// County Data Functions
+// ============================================================================
+
+/**
+ * County data interface
+ */
+export interface CountyData {
+  countyName: string;
+  stateAbbr: string;
+  stateFips: string;
+  countyFips: string | null;
+  population: number | null;
+}
+
+/**
+ * County with metrics interface
+ */
+export interface CountyWithMetrics extends CountyData {
+  metrics: MetricData | null;
+}
+
+/**
+ * County dashboard data - aggregates all data needed for county page
+ */
+export interface CountyDashboardData {
+  county: CountyWithMetrics | null;
+  cities: CityWithMetrics[];
+  zips: ZctaWithMetrics[];
+  benchmarks: BenchmarkRow[];
+  topCitiesAffordable: CityWithMetrics[];
+  topCitiesExpensive: CityWithMetrics[];
+  snapshot: {
+    propertyTaxRate: number | null;
+  } | null;
+}
+
+/**
+ * Get all unique counties in a state
+ */
+export async function getCountiesByState(stateAbbr: string): Promise<CountyData[]> {
+  const counties = await prisma.$queryRaw<Array<{
+    countyName: string;
+    stateAbbr: string;
+    stateFips: string;
+    countyFips: string | null;
+    population: number | null;
+  }>>`
+    SELECT DISTINCT
+      gc."countyName",
+      gc."stateAbbr",
+      gp."stateFips",
+      gc."countyFips",
+      SUM(gc.population) as population
+    FROM geo_city gc
+    LEFT JOIN geo_place gp ON gp."stateAbbr" = gc."stateAbbr"
+    WHERE gc."stateAbbr" = ${stateAbbr.toUpperCase()}
+      AND gc."countyName" IS NOT NULL
+    GROUP BY gc."countyName", gc."stateAbbr", gp."stateFips", gc."countyFips"
+    ORDER BY gc."countyName"
+  `;
+
+  return counties;
+}
+
+/**
+ * Get county by state slug and county name slug
+ */
+export async function getCountyByStateAndSlug(
+  stateSlug: string,
+  countySlug: string
+): Promise<CountyWithMetrics | null> {
+  const state = stateFromSlug(stateSlug);
+  if (!state) {
+    return null;
+  }
+
+  // Get all counties in the state
+  const counties = await getCountiesByState(state.abbr);
+
+  // Find matching county by slug
+  const county = counties.find((c) => slugify(c.countyName) === countySlug);
+
+  if (!county) {
+    return null;
+  }
+
+  // County pages don't have direct metrics in the database yet
+  // Return county with null metrics
+  return {
+    ...county,
+    metrics: null,
+  };
+}
+
+/**
+ * Get cities within a county
+ */
+export async function getCitiesByCounty(
+  stateAbbr: string,
+  countyName: string
+): Promise<CityWithMetrics[]> {
+  const citiesData = await prisma.$queryRaw<Array<{
+    cityId: string;
+    name: string;
+    stateAbbr: string;
+    stateName: string | null;
+    countyName: string | null;
+    metro: string | null;
+    slug: string;
+    population: number | null;
+    ratio: number | null;
+    homeValue: number | null;
+    income: number | null;
+    earningPower: number | null;
+    asOfDate: Date | null;
+    sources: string | null;
+  }>>`
+    WITH latest AS (
+      SELECT DISTINCT ON ("geoType", "geoId")
+        "geoId", ratio, "homeValue", income, "earningPower", "asOfDate", sources
+      FROM metric_snapshot
+      WHERE "geoType" = 'CITY'
+      ORDER BY "geoType", "geoId", "asOfDate" DESC
+    )
+    SELECT
+      gc."cityId", gc.name, gc."stateAbbr", gc."stateName", gc."countyName",
+      gc.metro, gc.slug, gc.population,
+      l.ratio, l."homeValue", l.income, l."earningPower", l."asOfDate", l.sources
+    FROM geo_city gc
+    LEFT JOIN latest l ON l."geoId" = gc."cityId"
+    WHERE gc."stateAbbr" = ${stateAbbr.toUpperCase()}
+      AND gc."countyName" = ${countyName}
+    ORDER BY gc.population DESC NULLS LAST, gc.name
+  `;
+
+  return citiesData.map((row) => ({
+    cityId: row.cityId,
+    name: row.name,
+    stateAbbr: row.stateAbbr,
+    stateName: row.stateName,
+    countyName: row.countyName,
+    metro: row.metro,
+    slug: row.slug,
+    population: row.population,
+    metrics: row.ratio !== null ? {
+      ratio: row.ratio,
+      homeValue: row.homeValue,
+      income: row.income,
+      earningPower: row.earningPower,
+      asOfDate: row.asOfDate ?? new Date(),
+      sources: row.sources,
+    } : null,
+  }));
+}
+
+/**
+ * Get ZIP codes within a county
+ */
+export async function getZipsByCounty(
+  stateAbbr: string,
+  countyName: string
+): Promise<ZctaWithMetrics[]> {
+  const zipsData = await prisma.$queryRaw<Array<{
+    zcta: string;
+    stateAbbr: string | null;
+    city: string | null;
+    metro: string | null;
+    countyName: string | null;
+    population: number | null;
+    ratio: number | null;
+    homeValue: number | null;
+    income: number | null;
+    earningPower: number | null;
+    asOfDate: Date | null;
+    sources: string | null;
+  }>>`
+    WITH latest AS (
+      SELECT DISTINCT ON ("geoType", "geoId")
+        "geoId", ratio, "homeValue", income, "earningPower", "asOfDate", sources
+      FROM metric_snapshot
+      WHERE "geoType" = 'ZCTA'
+      ORDER BY "geoType", "geoId", "asOfDate" DESC
+    )
+    SELECT
+      gz.zcta, gz."stateAbbr", gz.city, gz.metro, gz."countyName", gz.population,
+      l.ratio, l."homeValue", l.income, l."earningPower", l."asOfDate", l.sources
+    FROM geo_zcta gz
+    LEFT JOIN latest l ON l."geoId" = gz.zcta
+    WHERE gz."stateAbbr" = ${stateAbbr.toUpperCase()}
+      AND gz."countyName" = ${countyName}
+    ORDER BY gz.population DESC NULLS LAST, gz.zcta
+  `;
+
+  return zipsData.map((row) => ({
+    zcta: row.zcta,
+    stateAbbr: row.stateAbbr,
+    city: row.city,
+    metro: row.metro,
+    countyName: row.countyName,
+    population: row.population,
+    latitude: null,
+    longitude: null,
+    metrics: row.ratio !== null ? {
+      ratio: row.ratio,
+      homeValue: row.homeValue,
+      income: row.income,
+      earningPower: row.earningPower,
+      asOfDate: row.asOfDate ?? new Date(),
+      sources: row.sources,
+    } : null,
+  }));
+}
+
+/**
+ * Get county dashboard data - aggregates all data needed for county page
+ */
+export async function getCountyDashboardData(
+  stateSlug: string,
+  countySlug: string
+): Promise<CountyDashboardData> {
+  const state = stateFromSlug(stateSlug);
+  if (!state) {
+    return {
+      county: null,
+      cities: [],
+      zips: [],
+      benchmarks: [],
+      topCitiesAffordable: [],
+      topCitiesExpensive: [],
+      snapshot: null,
+    };
+  }
+
+  // Get county data
+  const county = await getCountyByStateAndSlug(stateSlug, countySlug);
+
+  if (!county) {
+    return {
+      county: null,
+      cities: [],
+      zips: [],
+      benchmarks: [],
+      topCitiesAffordable: [],
+      topCitiesExpensive: [],
+      snapshot: null,
+    };
+  }
+
+  // Get cities and ZIPs in the county
+  const [cities, zips] = await Promise.all([
+    getCitiesByCounty(state.abbr, county.countyName),
+    getZipsByCounty(state.abbr, county.countyName),
+  ]);
+
+  // Calculate county-level aggregates from cities
+  const citiesWithMetrics = cities.filter((c) => c.metrics !== null);
+  const countyMetrics = citiesWithMetrics.length > 0 ? {
+    // Weighted average by population
+    ratio: citiesWithMetrics.reduce((sum, c) => sum + (c.metrics?.ratio || 0) * (c.population || 1), 0) /
+           citiesWithMetrics.reduce((sum, c) => sum + (c.population || 1), 0),
+    homeValue: citiesWithMetrics.reduce((sum, c) => sum + (c.metrics?.homeValue || 0) * (c.population || 1), 0) /
+               citiesWithMetrics.reduce((sum, c) => sum + (c.population || 1), 0),
+    income: citiesWithMetrics.reduce((sum, c) => sum + (c.metrics?.income || 0) * (c.population || 1), 0) /
+            citiesWithMetrics.reduce((sum, c) => sum + (c.population || 1), 0),
+    earningPower: null,
+    asOfDate: citiesWithMetrics[0]?.metrics?.asOfDate ?? new Date(),
+    sources: citiesWithMetrics[0]?.metrics?.sources || null,
+  } : null;
+
+  // Build benchmarks
+  const benchmarks: BenchmarkRow[] = [];
+
+  // Add county average if available
+  if (countyMetrics) {
+    benchmarks.push({
+      label: `${county.countyName} County Avg`,
+      ratio: countyMetrics.ratio,
+      homeValue: countyMetrics.homeValue,
+      income: countyMetrics.income,
+    });
+  }
+
+  // Add state average
+  const stateMedians = getStateFallbackMedians(state.abbr);
+  if (stateMedians && stateMedians.homeValue && stateMedians.income) {
+    benchmarks.push({
+      label: `${state.name} Average`,
+      ratio: stateMedians.homeValue / stateMedians.income,
+      homeValue: stateMedians.homeValue,
+      income: stateMedians.income,
+    });
+  }
+
+  // Add national average
+  if (NATIONAL_MEDIANS.homeValue && NATIONAL_MEDIANS.income) {
+    benchmarks.push({
+      label: 'National Average',
+      ratio: NATIONAL_MEDIANS.homeValue / NATIONAL_MEDIANS.income,
+      homeValue: NATIONAL_MEDIANS.homeValue,
+      income: NATIONAL_MEDIANS.income,
+    });
+  }
+
+  // Get top affordable/expensive cities in the county
+  const topCitiesAffordable = cities
+    .filter((c) => c.metrics !== null && c.metrics.ratio !== null)
+    .sort((a, b) => (a.metrics?.ratio || 0) - (b.metrics?.ratio || 0))
+    .slice(0, 10);
+
+  const topCitiesExpensive = cities
+    .filter((c) => c.metrics !== null && c.metrics.ratio !== null)
+    .sort((a, b) => (b.metrics?.ratio || 0) - (a.metrics?.ratio || 0))
+    .slice(0, 10);
+
+  // Get property tax rate snapshot (if available for any city in county)
+  let propertyTaxRate = null;
+  if (cities.length > 0) {
+    try {
+      const taxData = await prisma.propertyTaxRate.findFirst({
+        where: {
+          geoType: 'CITY',
+          geoId: cities[0].cityId,
+        },
+        orderBy: {
+          asOfYear: 'desc',
+        },
+      });
+      propertyTaxRate = taxData?.effectiveRate ?? null;
+    } catch (error) {
+      console.error('Failed to fetch property tax rate:', error);
+    }
+  }
+
+  return {
+    county: {
+      ...county,
+      metrics: countyMetrics,
+    },
+    cities,
+    zips,
+    benchmarks,
+    topCitiesAffordable,
+    topCitiesExpensive,
+    snapshot: {
+      propertyTaxRate,
+    },
+  };
 }

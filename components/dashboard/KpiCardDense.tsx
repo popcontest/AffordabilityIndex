@@ -6,13 +6,14 @@ interface KpiCardDenseProps {
   subvalue?: string;
   delta?: string;
   tooltip?: string;
+  source?: string;
   children?: ReactNode;
 }
 
 /**
  * Compact KPI card for displaying key metrics
  */
-export function KpiCardDense({ label, value, subvalue, delta, tooltip, children }: KpiCardDenseProps) {
+export function KpiCardDense({ label, value, subvalue, delta, tooltip, source, children }: KpiCardDenseProps) {
   return (
     <div className="relative overflow-hidden bg-gradient-to-br from-white to-gray-50 border border-gray-200 rounded-lg p-5 hover:shadow-lg hover:border-gray-300 transition-all duration-200 group">
       {/* Icon background (decorative) - if available */}
@@ -45,6 +46,14 @@ export function KpiCardDense({ label, value, subvalue, delta, tooltip, children 
             <div className="text-sm text-gray-400 italic">No data</div>
           )}
         </div>
+
+        {source && (
+          <div className="mt-3 pt-3 border-t border-gray-200">
+            <div className="text-xs text-gray-500">
+              Source: <span className="font-medium text-gray-600">{source}</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {children && <div className="mt-4 pt-4 border-t border-gray-200">{children}</div>}

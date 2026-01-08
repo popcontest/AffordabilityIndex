@@ -15,6 +15,7 @@ import { ChartIcon } from '@/components/icons/ChartIcon';
 import { ScaleIcon } from '@/components/icons/ScaleIcon';
 import { FlagIcon } from '@/components/icons/FlagIcon';
 import { BookIcon } from '@/components/icons/BookIcon';
+import { DataSourceBadge } from '@/components/DataSourceBadge';
 
 interface StatePageProps {
   params: Promise<{
@@ -217,6 +218,14 @@ export default async function StatePage(props: StatePageProps) {
             {/* Quick Stats Bar */}
             <section className="py-10 bg-white border-b border-gray-200">
               <div className="max-w-5xl mx-auto px-4">
+                {/* Data Source Badge - Above Rankings */}
+                <div className="mb-8 flex justify-center">
+                  <DataSourceBadge
+                    variant="horizontal"
+                    showUpdateFrequency={true}
+                  />
+                </div>
+
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
                   <div className="text-center">
                     <div className="text-3xl md:text-4xl font-bold text-gray-900 mb-1">
