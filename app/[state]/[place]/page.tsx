@@ -263,7 +263,6 @@ async function renderCityDashboard(
           <DataSourceBadge
             variant="horizontal"
             zillowDate={metrics?.asOfDate}
-            acsVintage={metrics?.sources?.acsVintage}
             showUpdateFrequency={true}
           />
         </div>
