@@ -51,7 +51,7 @@ export default async function MidSizeCitiesRankingPage() {
               <span className="font-semibold text-ai-warm">Mid-Size Cities</span>
             </div>
             <h1 className="text-5xl sm:text-6xl lg:text-7xl font-black text-gray-900 mb-6 tracking-tight leading-[1.1]">
-              Mid-Size City <span className="text-ai-warm">Rankings</span>
+              America's Most Affordable <span className="text-ai-warm">Mid-Size Cities</span>
             </h1>
             <p className="text-xl sm:text-2xl text-gray-600 max-w-3xl mx-auto mb-8 font-light leading-relaxed">
               The <span className="font-medium text-gray-900">sweet spot</span> between big city amenities and small-town

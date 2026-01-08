@@ -51,7 +51,7 @@ export default async function LargeCitiesRankingPage() {
               <span className="font-semibold text-ai-warm">Large Cities</span>
             </div>
             <h1 className="text-5xl sm:text-6xl lg:text-7xl font-black text-gray-900 mb-6 tracking-tight leading-[1.1]">
-              Large City <span className="text-ai-warm">Rankings</span>
+              America's Most Affordable <span className="text-ai-warm">Large Cities</span>
             </h1>
             <p className="text-xl sm:text-2xl text-gray-600 max-w-3xl mx-auto mb-8 font-light leading-relaxed">
               Compare affordability across America's <span className="font-medium text-gray-900">major urban centers</span> with

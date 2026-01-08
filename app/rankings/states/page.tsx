@@ -52,7 +52,7 @@ export default async function StatesRankingPage() {
               <span className="font-semibold text-ai-warm">State Rankings</span>
             </div>
             <h1 className="text-5xl sm:text-6xl lg:text-7xl font-black text-gray-900 mb-6 tracking-tight leading-[1.1]">
-              All 51 <span className="text-ai-warm">States</span> Ranked
+              America's Most Affordable <span className="text-ai-warm">States</span>
             </h1>
             <p className="text-xl sm:text-2xl text-gray-600 max-w-3xl mx-auto mb-8 font-light leading-relaxed">
               Discover which states offer the <span className="font-medium text-gray-900">best value</span> for homebuyers
