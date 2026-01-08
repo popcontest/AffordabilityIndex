@@ -25,7 +25,7 @@ export function BenchmarkTable({ rows }: BenchmarkTableProps) {
 
   const formatRatio = (val: number | null) => {
     if (val === null) return '—';
-    return val.toFixed(2);
+    return val.toFixed(1);
   };
 
   // Find max ratio for bar scaling
@@ -83,21 +83,35 @@ export function BenchmarkTable({ rows }: BenchmarkTableProps) {
             <div className="mb-4">
               <div className="flex items-baseline justify-between mb-2">
                 <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">Relative Affordability</span>
+                {row.ratio !== null && (
+                  <span className={`text-sm font-bold ${getTextColor(row.ratio)} tabular-nums`}>
+                    Ratio: {formatRatio(row.ratio)}
+                  </span>
+                )}
               </div>
 
-              {/* Visual Bar */}
-              <div className="relative h-3 bg-gray-100 rounded-full overflow-hidden">
-                <div
-                  className={`absolute left-0 top-0 h-full ${getBarColor(row.ratio)} transition-all duration-500 shadow-sm`}
-                  style={{ width: `${barWidth}%` }}
-                />
-              </div>
+              {/* Visual Bar with Direction Indicators */}
+              <div className="relative">
+                {/* Direction Labels */}
+                <div className="flex justify-between text-xs text-gray-500 mb-1">
+                  <span>More affordable</span>
+                  <span>Less affordable</span>
+                </div>
 
-              <div className="mt-1 text-xs text-gray-500">
-                {row.ratio && row.ratio < 4 && 'Highly affordable'}
-                {row.ratio && row.ratio >= 4 && row.ratio < 6 && 'Moderately affordable'}
-                {row.ratio && row.ratio >= 6 && row.ratio < 8 && 'Challenging affordability'}
-                {row.ratio && row.ratio >= 8 && 'Severe affordability crisis'}
+                {/* Visual Bar */}
+                <div className="relative h-3 bg-gray-100 rounded-full overflow-hidden">
+                  <div
+                    className={`absolute left-0 top-0 h-full ${getBarColor(row.ratio)} transition-all duration-500 shadow-sm`}
+                    style={{ width: `${barWidth}%` }}
+                  />
+                </div>
+
+                <div className="mt-1 text-xs text-gray-500">
+                  {row.ratio && row.ratio < 4 && 'Highly affordable'}
+                  {row.ratio && row.ratio >= 4 && row.ratio < 6 && 'Moderately affordable'}
+                  {row.ratio && row.ratio >= 6 && row.ratio < 8 && 'Challenging affordability'}
+                  {row.ratio && row.ratio >= 8 && 'Severe affordability crisis'}
+                </div>
               </div>
             </div>
 
@@ -108,7 +122,7 @@ export function BenchmarkTable({ rows }: BenchmarkTableProps) {
                 <div className="text-sm font-semibold text-gray-900 tabular-nums">{formatCurrency(row.homeValue)}</div>
               </div>
               <div>
-                <div className="text-xs text-gray-500 mb-1">Median Income</div>
+                <div className="text-xs text-gray-500 mb-1">Median Household Income</div>
                 <div className="text-sm font-semibold text-gray-900 tabular-nums">{formatCurrency(row.income)}</div>
               </div>
             </div>
@@ -118,9 +132,14 @@ export function BenchmarkTable({ rows }: BenchmarkTableProps) {
 
       {/* Legend */}
       <div className="mt-6 pt-4 border-t border-gray-200">
-        <div className="text-xs text-gray-600">
-          <span className="font-medium">How to read this:</span> The colored bars show relative affordability comparison -
-          longer bars indicate less affordable areas where homes cost more relative to income.
+        <div className="text-xs text-gray-600 space-y-1">
+          <div>
+            <span className="font-medium">How to read this:</span> The affordability ratio compares home value to median household income.
+            Lower ratios indicate more affordable housing (shorter bar = better).
+          </div>
+          <div className="text-gray-500">
+            Example: A ratio of 3.0 means the typical home costs 3× the annual median household income.
+          </div>
         </div>
       </div>
     </div>

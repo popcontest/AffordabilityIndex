@@ -6,6 +6,7 @@
  */
 
 import { useState, useMemo } from 'react';
+import { DisclaimerBox } from './DisclaimerBox';
 
 interface RentVsBuyCalculatorProps {
   medianRent: number;          // From ACS B25064 (monthly)
@@ -123,10 +124,10 @@ export function RentVsBuyCalculator({
   }, [medianRent, monthlyBuy, yearsToStay, medianHomeValue, mortgageRate, downPaymentPct]);
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
+    <div className="bg-white rounded-lg border border-gray-200 shadow-sm" role="region" aria-labelledby="rvb-heading">
       {/* Header */}
       <div className="px-6 py-4 border-b border-gray-200">
-        <h2 className="text-lg font-semibold text-gray-900">Rent vs Buy Analysis</h2>
+        <h2 id="rvb-heading" className="text-lg font-semibold text-gray-900">Rent vs Buy Analysis</h2>
         <p className="text-sm text-gray-500 mt-0.5">Compare the cost of renting vs buying in {cityName}</p>
       </div>
 
@@ -135,10 +136,11 @@ export function RentVsBuyCalculator({
         <div className="grid md:grid-cols-3 gap-4">
           {/* Down Payment */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="down-payment-range" className="block text-sm font-medium text-gray-700 mb-2">
               Down Payment: {(downPaymentPct * 100).toFixed(0)}%
             </label>
             <input
+              id="down-payment-range"
               type="range"
               min="0.035"
               max="0.50"
@@ -146,8 +148,12 @@ export function RentVsBuyCalculator({
               value={downPaymentPct}
               onChange={(e) => setDownPaymentPct(parseFloat(e.target.value))}
               className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+              aria-valuemin={3.5}
+              aria-valuemax={50}
+              aria-valuenow={downPaymentPct * 100}
+              aria-valuetext={`${(downPaymentPct * 100).toFixed(0)}% down payment, ${(medianHomeValue * downPaymentPct).toLocaleString(undefined, { maximumFractionDigits: 0 })} dollars`}
             />
-            <div className="flex justify-between text-xs text-gray-500 mt-1">
+            <div className="flex justify-between text-xs text-gray-500 mt-1" aria-hidden="true">
               <span>3.5%</span>
               <span className="font-medium">${(medianHomeValue * downPaymentPct).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
               <span>50%</span>
@@ -156,10 +162,11 @@ export function RentVsBuyCalculator({
 
           {/* Years to Stay */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="years-to-stay-range" className="block text-sm font-medium text-gray-700 mb-2">
               Years to Stay: {yearsToStay}
             </label>
             <input
+              id="years-to-stay-range"
               type="range"
               min="1"
               max="10"
@@ -167,8 +174,12 @@ export function RentVsBuyCalculator({
               value={yearsToStay}
               onChange={(e) => setYearsToStay(parseInt(e.target.value))}
               className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+              aria-valuemin={1}
+              aria-valuemax={10}
+              aria-valuenow={yearsToStay}
+              aria-valuetext={`${yearsToStay} years`}
             />
-            <div className="flex justify-between text-xs text-gray-500 mt-1">
+            <div className="flex justify-between text-xs text-gray-500 mt-1" aria-hidden="true">
               <span>1 year</span>
               <span>10 years</span>
             </div>
@@ -176,10 +187,11 @@ export function RentVsBuyCalculator({
 
           {/* Mortgage Rate */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="mortgage-rate-input" className="block text-sm font-medium text-gray-700 mb-2">
               Mortgage Rate: {(mortgageRate * 100).toFixed(2)}%
             </label>
             <input
+              id="mortgage-rate-input"
               type="number"
               min="3"
               max="12"
@@ -187,19 +199,20 @@ export function RentVsBuyCalculator({
               value={(mortgageRate * 100).toFixed(2)}
               onChange={(e) => setMortgageRate(parseFloat(e.target.value) / 100)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              aria-describedby="mortgage-rate-description"
             />
-            <div className="text-xs text-gray-500 mt-1">30-year fixed</div>
+            <div id="mortgage-rate-description" className="text-xs text-gray-500 mt-1">30-year fixed</div>
           </div>
         </div>
       </div>
 
       {/* Results Comparison */}
-      <div className="px-6 py-5">
+      <div className="px-6 py-5" role="region" aria-live="polite" aria-atomic="true">
         <div className="grid md:grid-cols-2 gap-6">
           {/* Renting */}
           <div className="bg-blue-50 rounded-lg p-5 border border-blue-100">
             <div className="flex items-center gap-2 mb-3">
-              <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
               </svg>
               <h3 className="font-semibold text-gray-900">Renting</h3>
@@ -226,7 +239,7 @@ export function RentVsBuyCalculator({
           {/* Buying */}
           <div className="bg-green-50 rounded-lg p-5 border border-green-100">
             <div className="flex items-center gap-2 mb-3">
-              <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
               </svg>
               <h3 className="font-semibold text-gray-900">Buying</h3>
@@ -258,9 +271,9 @@ export function RentVsBuyCalculator({
         </div>
 
         {/* Breakeven Analysis */}
-        <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+        <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200" role="region" aria-live="polite">
           <div className="flex items-start gap-3">
-            <svg className="w-5 h-5 text-gray-600 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="w-5 h-5 text-gray-600 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
             </svg>
             <div className="flex-1">
@@ -280,13 +293,77 @@ export function RentVsBuyCalculator({
         </div>
       </div>
 
+      {/* Breakeven Analysis */}
+      <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+        <div className="flex items-start gap-3">
+          <svg className="w-5 h-5 text-gray-600 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+          </svg>
+          <div className="flex-1">
+            <div className="text-sm font-medium text-gray-700 mb-1">Breakeven Point</div>
+            {analysis.breakevenYears < 10 ? (
+              <div className="text-sm text-gray-900">
+                <span className="font-semibold">What this means:</span> If you stay in this home longer than{' '}
+                <span className="text-lg font-bold text-green-700">{analysis.breakevenYears.toFixed(1)} years</span>,
+                buying becomes cheaper than renting overall. Before that point, renting costs less.
+              </div>
+            ) : (
+              <div className="text-sm text-gray-900">
+                <span className="font-semibold">What this means:</span> Renting remains cheaper for the full{' '}
+                <span className="font-semibold">10-year period</span> analyzed. Buying may become advantageous beyond 10 years.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Calculator Assumptions */}
+      <details className="px-6 py-4 bg-blue-50 border-t border-blue-200">
+        <summary className="cursor-pointer text-blue-700 hover:text-blue-900 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 rounded">
+          Calculator Assumptions
+        </summary>
+        <div className="mt-3 space-y-3 text-sm text-gray-700">
+          <div>
+            <div className="font-medium text-gray-900 mb-1">Fixed Rates Used:</div>
+            <ul className="space-y-1 text-xs ml-4 list-disc">
+              <li>Home appreciation: <strong>3.0%</strong> annually (national historical average)</li>
+              <li>Homeowners insurance: <strong>0.6%</strong> of home value annually</li>
+              <li>Maintenance & repairs: <strong>1.0%</strong> of home value annually</li>
+              <li>Closing costs: <strong>3.0%</strong> of home value (one-time at purchase)</li>
+            </ul>
+          </div>
+          <div className="text-xs text-gray-600 italic bg-yellow-50 p-2 rounded border border-yellow-200">
+            <strong>Important:</strong> These rates vary significantly by location. For example:
+            <ul className="mt-1 ml-4 list-disc">
+              <li>Property taxes range from ~0.3% (Hawaii) to ~2.5% (some states)</li>
+              <li>Insurance varies by state, flood zones, and risk factors</li>
+              <li>Maintenance costs depend on home age and condition</li>
+            </ul>
+            Get local quotes for accurate estimates in your area.
+          </div>
+        </div>
+      </details>
+
       {/* Disclaimer */}
       <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
         <p className="text-xs text-gray-500">
           Based on ACS median rent (${medianRent.toLocaleString()}/mo) and Zillow median home value (${medianHomeValue.toLocaleString()}).
-          Assumes {(downPaymentPct * 100).toFixed(0)}% down, {(mortgageRate * 100).toFixed(2)}% mortgage rate, 3% annual appreciation,
-          0.6% home insurance, 1% maintenance. For illustration only. Does not constitute financial advice.
+          Assumes {(downPaymentPct * 100).toFixed(0)}% down, {(mortgageRate * 100).toFixed(2)}% mortgage rate.
+          <details className="mt-1">
+            <summary className="cursor-pointer text-blue-600 hover:text-blue-800">View all assumptions</summary>
+            <ul className="mt-1 space-y-1 ml-4 list-disc text-xs">
+              <li>3% annual home appreciation</li>
+              <li>0.6% home insurance rate</li>
+              <li>1% maintenance costs</li>
+              <li>3% closing costs</li>
+              <li>30-year fixed mortgage</li>
+            </ul>
+          </details>
         </p>
+      </div>
+
+      <div className="px-6 py-4 bg-white border-t border-gray-200">
+        <DisclaimerBox variant="calculator" />
       </div>
     </div>
   );
