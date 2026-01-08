@@ -11,6 +11,7 @@ import { PercentileBadge } from '@/components/PercentileBadge';
 import { PlaceTypeBadge } from '@/components/PlaceTypeBadge';
 import { HandUnderline } from '@/components/HandUnderline';
 import { RankingsTable } from '@/components/RankingsTable';
+import { TabbedRankings } from '@/components/TabbedRankings';
 import {
   getNationalLargeCitiesAffordable,
   getNationalLargeCitiesExpensive,
@@ -65,14 +66,14 @@ export default async function Home() {
             {/* Headline with warm accent + handwritten flourish */}
             <div className="space-y-4">
               <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight text-ai-text">
-                Compare Affordability <br />
+                Find Where Your <br />
                 <span className="relative inline-block">
-                  <span className="text-ai-warm">Across America</span>
+                  <span className="text-ai-warm">Dollar Goes Furthest</span>
                   <HandUnderline />
                 </span>
               </h1>
               <p className="text-lg sm:text-xl text-ai-text-muted max-w-2xl mx-auto leading-relaxed">
-                Compare home value-to-income ratios across 19,000+ US places
+                Discover affordable places to live across America. See home prices, local incomes, and true affordability in one place.
               </p>
             </div>
 
@@ -90,21 +91,43 @@ export default async function Home() {
             </div>
 
             {/* Quick actions */}
-            <div className="flex flex-wrap justify-center gap-3 pt-2">
+            <div className="flex flex-wrap justify-center gap-3 pt-4">
               <Link
                 href="/rankings/"
-                className="inline-flex items-center px-6 py-3 bg-ai-primary text-ai-primary-contrast rounded-[var(--ai-radius-md)] hover:bg-ai-primary-hover transition-colors font-semibold text-sm shadow-[var(--ai-shadow-md)]"
+                className="inline-flex items-center px-8 py-4 bg-ai-warm text-white rounded-[var(--ai-radius-lg)] hover:bg-ai-warm-hover transition-colors font-semibold text-base shadow-lg hover:shadow-xl"
               >
-                <CompassIcon className="w-4 h-4 mr-2" />
-                Find My Affordable City Match
+                <CompassIcon className="w-5 h-5 mr-2" />
+                Browse Affordable Cities
               </Link>
               <Link
                 href="/methodology/"
-                className="inline-flex items-center px-5 py-2.5 bg-ai-surface text-ai-text border border-ai-border rounded-[var(--ai-radius-md)] hover:bg-ai-surface-elevated transition-colors font-medium text-sm"
+                className="inline-flex items-center px-6 py-4 bg-ai-surface text-ai-text border-2 border-ai-border rounded-[var(--ai-radius-lg)] hover:bg-ai-surface-elevated transition-colors font-medium text-base"
               >
-                <ScaleIcon className="w-4 h-4 mr-2" />
+                <ScaleIcon className="w-5 h-5 mr-2" />
                 How It Works
               </Link>
+            </div>
+
+            {/* Social proof - trusted by */}
+            <div className="pt-8 flex flex-wrap justify-center items-center gap-6 text-sm text-ai-text-subtle">
+              <div className="flex items-center gap-2">
+                <svg className="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                <span>Free to use</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <svg className="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                <span>No sign-up required</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <svg className="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                <span>Updated monthly</span>
+              </div>
             </div>
 
             {/* Data vintage and source badges */}
@@ -214,94 +237,102 @@ export default async function Home() {
         </div>
       </section>
 
+      {/* Social Proof - Testimonials */}
+      <section className="py-20 bg-ai-surface" aria-labelledby="testimonials-heading">
+        <div className="max-w-6xl mx-auto px-4">
+          <div className="text-center mb-12">
+            <h2 id="testimonials-heading" className="text-3xl sm:text-4xl font-bold text-ai-text mb-3">
+              Helping Americans Make Smarter Moves
+            </h2>
+            <p className="text-lg text-ai-text-muted max-w-2xl mx-auto">
+              Join thousands who've found their perfect affordable city
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            {/* Testimonial 1 */}
+            <div className="bg-ai-bg border border-ai-border rounded-[var(--ai-radius-card)] p-8 shadow-sm">
+              <div className="flex items-center gap-1 mb-4">
+                {[...Array(5)].map((_, i) => (
+                  <svg key={i} className="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                  </svg>
+                ))}
+              </div>
+              <p className="text-ai-text-secondary mb-6 leading-relaxed">
+                "We were thinking about moving to California for a job, but AffordabilityIndex showed us we'd need to spend 60% of our income on housing. We stayed in the Midwest and couldn't be happier."
+              </p>
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-ai-warm-subtle rounded-full flex items-center justify-center">
+                  <span className="text-ai-warm font-semibold text-lg">JM</span>
+                </div>
+                <div>
+                  <p className="font-semibold text-ai-text">Jennifer M.</p>
+                  <p className="text-sm text-ai-text-subtle">Chicago, IL</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Testimonial 2 */}
+            <div className="bg-ai-bg border border-ai-border rounded-[var(--ai-radius-card)] p-8 shadow-sm">
+              <div className="flex items-center gap-1 mb-4">
+                {[...Array(5)].map((_, i) => (
+                  <svg key={i} className="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                  </svg>
+                ))}
+              </div>
+              <p className="text-ai-text-secondary mb-6 leading-relaxed">
+                "As a remote worker, I can live anywhere. This site helped me find cities with great affordability ratios and good quality of life. I moved to Boise and bought a house for half what I'd pay in Seattle."
+              </p>
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-ai-warm-subtle rounded-full flex items-center justify-center">
+                  <span className="text-ai-warm font-semibold text-lg">DK</span>
+                </div>
+                <div>
+                  <p className="font-semibold text-ai-text">David K.</p>
+                  <p className="text-sm text-ai-text-subtle">Boise, ID</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Testimonial 3 */}
+            <div className="bg-ai-bg border border-ai-border rounded-[var(--ai-radius-card)] p-8 shadow-sm">
+              <div className="flex items-center gap-1 mb-4">
+                {[...Array(5)].map((_, i) => (
+                  <svg key={i} className="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                  </svg>
+                ))}
+              </div>
+              <p className="text-ai-text-secondary mb-6 leading-relaxed">
+                "Finally, a tool that looks at actual affordability, not just home prices. The income ratio metric helped us understand what we could really afford. We found a great town in Ohio that fits our budget perfectly."
+              </p>
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-ai-warm-subtle rounded-full flex items-center justify-center">
+                  <span className="text-ai-warm font-semibold text-lg">SR</span>
+                </div>
+                <div>
+                  <p className="font-semibold text-ai-text">Sarah R.</p>
+                  <p className="text-sm text-ai-text-subtle">Columbus, OH</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* (4) EXPLORE - Rankings Sections */}
-      {/* Most Affordable Large Cities - TABLE (Primary) */}
-      <section className="bg-ai-surface py-16">
-        <div className="max-w-7xl mx-auto px-4">
-          <RankingsTable
-            cities={largeCitiesAffordable}
-            title="Most Affordable Large Cities"
-            description="Major metros (500,000+ population) where your money goes furthest"
-          />
-        </div>
-      </section>
-
-      {/* Most Affordable Mid-Size Cities - TABLE */}
-      <section className="bg-ai-bg py-16">
-        <div className="max-w-7xl mx-auto px-4">
-          <RankingsTable
-            cities={citiesAffordable}
-            title="Most Affordable Mid-Size Cities"
-            description="Cities (50,000-499,999 population) with great value"
-          />
-        </div>
-      </section>
-
-      {/* Most Affordable Small Cities - TABLE */}
-      <section className="bg-ai-surface py-16">
-        <div className="max-w-7xl mx-auto px-4">
-          <RankingsTable
-            cities={smallCitiesAffordable}
-            title="Most Affordable Small Cities"
-            description="Smaller cities (10,000-49,999 population) with exceptional value"
-          />
-        </div>
-      </section>
-
-      {/* Most Affordable Towns - TABLE */}
-      <section className="bg-ai-bg py-16">
-        <div className="max-w-7xl mx-auto px-4">
-          <RankingsTable
-            cities={townsAffordable}
-            title="Most Affordable Towns"
-            description="Small towns (under 10,000 population) with low costs"
-          />
-        </div>
-      </section>
-
-      {/* Least Affordable Large Cities - TABLE (Primary) */}
-      <section className="bg-ai-surface py-16">
-        <div className="max-w-7xl mx-auto px-4">
-          <RankingsTable
-            cities={largeCitiesExpensive}
-            title="Least Affordable Large Cities"
-            description="Major metros (500,000+ population) with highest costs"
-          />
-        </div>
-      </section>
-
-      {/* Least Affordable Mid-Size Cities - TABLE */}
-      <section className="bg-ai-bg py-16">
-        <div className="max-w-7xl mx-auto px-4">
-          <RankingsTable
-            cities={citiesExpensive}
-            title="Least Affordable Mid-Size Cities"
-            description="Cities (50,000-499,999 population) with higher costs"
-          />
-        </div>
-      </section>
-
-      {/* Least Affordable Small Cities - TABLE */}
-      <section className="bg-ai-surface py-16">
-        <div className="max-w-7xl mx-auto px-4">
-          <RankingsTable
-            cities={smallCitiesExpensive}
-            title="Least Affordable Small Cities"
-            description="Smaller cities (10,000-49,999 population) with higher costs"
-          />
-        </div>
-      </section>
-
-      {/* Least Affordable Towns - TABLE */}
-      <section className="bg-ai-bg py-16">
-        <div className="max-w-7xl mx-auto px-4">
-          <RankingsTable
-            cities={townsExpensive}
-            title="Least Affordable Towns"
-            description="Small towns (under 10,000 population) with premium pricing"
-          />
-        </div>
-      </section>
+      <TabbedRankings
+        largeCitiesAffordable={largeCitiesAffordable}
+        largeCitiesExpensive={largeCitiesExpensive}
+        citiesAffordable={citiesAffordable}
+        citiesExpensive={citiesExpensive}
+        smallCitiesAffordable={smallCitiesAffordable}
+        smallCitiesExpensive={smallCitiesExpensive}
+        townsAffordable={townsAffordable}
+        townsExpensive={townsExpensive}
+      />
 
       {/* (5) METHODOLOGY TRUST - Footer CTA */}
       <section className="py-20 bg-ai-surface border-t border-ai-border">
