@@ -11,7 +11,6 @@ import { PercentileBadge } from '@/components/PercentileBadge';
 import { PlaceTypeBadge } from '@/components/PlaceTypeBadge';
 import { HandUnderline } from '@/components/HandUnderline';
 import { RankingsTable } from '@/components/RankingsTable';
-import { TabbedRankings } from '@/components/TabbedRankings';
 import {
   getNationalLargeCitiesAffordable,
   getNationalLargeCitiesExpensive,
@@ -323,16 +322,93 @@ export default async function Home() {
       </section>
 
       {/* (4) EXPLORE - Rankings Sections */}
-      <TabbedRankings
-        largeCitiesAffordable={largeCitiesAffordable}
-        largeCitiesExpensive={largeCitiesExpensive}
-        citiesAffordable={citiesAffordable}
-        citiesExpensive={citiesExpensive}
-        smallCitiesAffordable={smallCitiesAffordable}
-        smallCitiesExpensive={smallCitiesExpensive}
-        townsAffordable={townsAffordable}
-        townsExpensive={townsExpensive}
-      />
+      {/* Most Affordable Large Cities - TABLE (Primary) */}
+      <section className="bg-ai-surface py-16">
+        <div className="max-w-7xl mx-auto px-4">
+          <RankingsTable
+            cities={largeCitiesAffordable}
+            title="Most Affordable Large Cities"
+            description="Major metros (500,000+ population) where your money goes furthest"
+          />
+        </div>
+      </section>
+
+      {/* Most Affordable Mid-Size Cities - TABLE */}
+      <section className="bg-ai-bg py-16">
+        <div className="max-w-7xl mx-auto px-4">
+          <RankingsTable
+            cities={citiesAffordable}
+            title="Most Affordable Mid-Size Cities"
+            description="Cities (50,000-499,999 population) with great value"
+          />
+        </div>
+      </section>
+
+      {/* Most Affordable Small Cities - TABLE */}
+      <section className="bg-ai-surface py-16">
+        <div className="max-w-7xl mx-auto px-4">
+          <RankingsTable
+            cities={smallCitiesAffordable}
+            title="Most Affordable Small Cities"
+            description="Smaller cities (10,000-49,999 population) with exceptional value"
+          />
+        </div>
+      </section>
+
+      {/* Most Affordable Towns - TABLE */}
+      <section className="bg-ai-bg py-16">
+        <div className="max-w-7xl mx-auto px-4">
+          <RankingsTable
+            cities={townsAffordable}
+            title="Most Affordable Towns"
+            description="Small towns (under 10,000 population) with low costs"
+          />
+        </div>
+      </section>
+
+      {/* Least Affordable Large Cities - TABLE (Primary) */}
+      <section className="bg-ai-surface py-16">
+        <div className="max-w-7xl mx-auto px-4">
+          <RankingsTable
+            cities={largeCitiesExpensive}
+            title="Least Affordable Large Cities"
+            description="Major metros (500,000+ population) with highest costs"
+          />
+        </div>
+      </section>
+
+      {/* Least Affordable Mid-Size Cities - TABLE */}
+      <section className="bg-ai-bg py-16">
+        <div className="max-w-7xl mx-auto px-4">
+          <RankingsTable
+            cities={citiesExpensive}
+            title="Least Affordable Mid-Size Cities"
+            description="Cities (50,000-499,999 population) with higher costs"
+          />
+        </div>
+      </section>
+
+      {/* Least Affordable Small Cities - TABLE */}
+      <section className="bg-ai-surface py-16">
+        <div className="max-w-7xl mx-auto px-4">
+          <RankingsTable
+            cities={smallCitiesExpensive}
+            title="Least Affordable Small Cities"
+            description="Smaller cities (10,000-49,999 population) with higher costs"
+          />
+        </div>
+      </section>
+
+      {/* Least Affordable Towns - TABLE */}
+      <section className="bg-ai-bg py-16">
+        <div className="max-w-7xl mx-auto px-4">
+          <RankingsTable
+            cities={townsExpensive}
+            title="Least Affordable Towns"
+            description="Small towns (under 10,000 population) with premium pricing"
+          />
+        </div>
+      </section>
 
       {/* (5) METHODOLOGY TRUST - Footer CTA */}
       <section className="py-20 bg-ai-surface border-t border-ai-border">
