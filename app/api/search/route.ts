@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSearchResults, getCityByStateAndSlug, getZipByCode, SearchResult } from '@/lib/data';
 import { canonical, slugify } from '@/lib/seo';
 import { stateFromAbbr, stateFromName, stateFromSlug, US_STATES, USState } from '@/lib/usStates';
+import { checkRateLimit, getClientIp, rateLimiters } from '@/lib/security/rateLimit';
+import { validateQueryParams, sanitizeSearchQuery, detectSuspiciousQuery } from '@/lib/security/validation';
+import { logRateLimitExceeded, logInvalidInput, logSuspiciousQuery, logApiError, getUserAgent } from '@/lib/security/logger';
 
 /**
  * Parse a search query to extract city name and state constraint
@@ -87,18 +90,77 @@ function parseQuery(query: string): { cityQuery: string; state: USState | null; 
 }
 
 export async function GET(request: NextRequest) {
+  // Get client IP for rate limiting and logging
+  const ip = getClientIp(request);
+  const userAgent = getUserAgent(request);
+  const endpoint = '/api/search';
+
   try {
+    // Rate limiting
+    const rateLimitResult = await checkRateLimit(ip, rateLimiters.search);
+    if (!rateLimitResult.success) {
+      logRateLimitExceeded({
+        ip,
+        endpoint,
+        limit: rateLimitResult.limit,
+      });
+
+      return NextResponse.json(
+        {
+          error: 'Too many requests',
+          message: 'Rate limit exceeded. Please try again later.',
+        },
+        {
+          status: 429,
+          headers: {
+            'X-RateLimit-Limit': rateLimitResult.limit.toString(),
+            'X-RateLimit-Remaining': rateLimitResult.remaining.toString(),
+            'X-RateLimit-Reset': new Date(rateLimitResult.reset).toISOString(),
+            'Retry-After': '10',
+          },
+        }
+      );
+    }
+
     const searchParams = request.nextUrl.searchParams;
     const query = searchParams.get('q');
 
     if (!query || query.trim().length === 0) {
+      logInvalidInput({
+        ip,
+        endpoint,
+        field: 'q',
+        value: query,
+        reason: 'Missing or empty query parameter',
+      });
+
       return NextResponse.json(
         { error: 'Query parameter "q" is required' },
         { status: 400 }
       );
     }
 
-    const q = query.trim();
+    // Validate and sanitize query
+    const sanitizedQuery = sanitizeSearchQuery(query);
+
+    // Check for suspicious patterns
+    const suspiciousReason = detectSuspiciousQuery(sanitizedQuery);
+    if (suspiciousReason) {
+      logSuspiciousQuery({
+        ip,
+        userAgent,
+        endpoint,
+        query: sanitizedQuery,
+        reason: suspiciousReason,
+      });
+
+      return NextResponse.json(
+        { error: 'Invalid search query' },
+        { status: 400 }
+      );
+    }
+
+    const q = sanitizedQuery;
 
     // Check if query is a 5-digit ZIP code
     if (/^\d{5}$/.test(q)) {
@@ -231,7 +293,13 @@ export async function GET(request: NextRequest) {
       count: allResults.length,
     });
   } catch (error) {
-    console.error('Search API error:', error);
+    logApiError({
+      ip,
+      endpoint,
+      error: error instanceof Error ? error : String(error),
+      context: { query: request.nextUrl.searchParams.get('q') },
+    });
+
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

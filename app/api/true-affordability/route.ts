@@ -14,18 +14,62 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { calculateTrueAffordability, HouseholdType } from '@/lib/trueAffordability';
 import { GeoType } from '@prisma/client';
+import { checkRateLimit, getClientIp, rateLimiters } from '@/lib/security/rateLimit';
+import { validateQueryParams, TrueAffordabilityApiSchema } from '@/lib/security/validation';
+import { logRateLimitExceeded, logInvalidInput, logApiError } from '@/lib/security/logger';
 
 export async function GET(request: NextRequest) {
+  // Get client IP for rate limiting and logging
+  const ip = getClientIp(request);
+  const endpoint = '/api/true-affordability';
+
   try {
+    // Rate limiting
+    const rateLimitResult = await checkRateLimit(ip, rateLimiters.calculator);
+    if (!rateLimitResult.success) {
+      logRateLimitExceeded({
+        ip,
+        endpoint,
+        limit: rateLimitResult.limit,
+      });
+
+      return NextResponse.json(
+        {
+          error: 'Too many requests',
+          message: 'Rate limit exceeded. Please try again later.',
+        },
+        {
+          status: 429,
+          headers: {
+            'X-RateLimit-Limit': rateLimitResult.limit.toString(),
+            'X-RateLimit-Remaining': rateLimitResult.remaining.toString(),
+            'X-RateLimit-Reset': new Date(rateLimitResult.reset).toISOString(),
+            'Retry-After': '60',
+          },
+        }
+      );
+    }
+
     const searchParams = request.nextUrl.searchParams;
 
-    // Required parameters
-    const geoType = searchParams.get('geoType') as GeoType | null;
-    const geoId = searchParams.get('geoId');
+    // Validate query parameters using Zod schema
+    const validationResult = validateQueryParams(searchParams, TrueAffordabilityApiSchema);
+    if (!validationResult.success) {
+      logInvalidInput({
+        ip,
+        endpoint,
+        field: 'query',
+        value: Object.fromEntries(searchParams.entries()),
+        reason: validationResult.error,
+      });
 
-    // Optional parameters
-    const householdType = (searchParams.get('householdType') || 'family') as HouseholdType;
-    const income = searchParams.get('income') ? parseInt(searchParams.get('income')!) : undefined;
+      return NextResponse.json(
+        { error: validationResult.error },
+        { status: 400 }
+      );
+    }
+
+    const { geoType, geoId, householdType, income } = validationResult.data;
 
     // Set default children based on household type
     let numChildren = 0;
@@ -33,28 +77,6 @@ export async function GET(request: NextRequest) {
     if (householdType === 'family') {
       numChildren = 2;
       childAges = [1, 3]; // Infant + toddler (most expensive)
-    }
-
-    // Validation
-    if (!geoType || !geoId) {
-      return NextResponse.json(
-        { error: 'Missing required parameters: geoType and geoId' },
-        { status: 400 }
-      );
-    }
-
-    if (!['CITY', 'ZCTA'].includes(geoType)) {
-      return NextResponse.json(
-        { error: 'Invalid geoType. Must be CITY or ZCTA' },
-        { status: 400 }
-      );
-    }
-
-    if (!['single', 'couple', 'family', 'emptyNester', 'retiree', 'remoteWorker'].includes(householdType)) {
-      return NextResponse.json(
-        { error: 'Invalid householdType' },
-        { status: 400 }
-      );
     }
 
     // Calculate True Affordability
@@ -79,11 +101,17 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error: any) {
-    console.error('True Affordability API Error:', error);
+    logApiError({
+      ip,
+      endpoint,
+      error: error instanceof Error ? error : String(error),
+      context: { geoType: request.nextUrl.searchParams.get('geoType'), geoId: request.nextUrl.searchParams.get('geoId') },
+    });
+
     return NextResponse.json(
       {
         error: 'Internal server error',
-        message: error.message,
+        message: process.env.NODE_ENV === 'development' ? error.message : undefined,
       },
       { status: 500 }
     );
