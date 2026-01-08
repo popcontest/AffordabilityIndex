@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { canonical } from '@/lib/seo';
 import { JsonLd, generateBreadcrumbJsonLd } from '@/components/JsonLd';
 import { SearchBox } from '@/components/SearchBox';
-import { TrendingUp, TrendingDown, MapPin, Users } from '@/components/icons';
+import { BloomIcon } from '@/components/icons';
 import { formatRatio } from '@/lib/viewModels';
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -102,7 +102,10 @@ export default async function RankingsPage() {
               >
                 <div className="flex items-center gap-4 mb-3">
                   <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-200 transition-colors">
-                    <MapPin className="w-6 h-6 text-blue-600" />
+                    <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 1.31z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
                   </div>
                   <div>
                     <h3 className="text-xl font-bold text-gray-900 group-hover:text-blue-600">
@@ -113,11 +116,15 @@ export default async function RankingsPage() {
                 </div>
                 <div className="flex gap-4 text-sm">
                   <div className="flex items-center gap-1 text-green-600">
-                    <TrendingDown className="w-4 h-4" />
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                    </svg>
                     <span>Most affordable</span>
                   </div>
                   <div className="flex items-center gap-1 text-red-600">
-                    <TrendingUp className="w-4 h-4" />
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 17l8-8m0 0V9m0 0l-8 8-4-4-6 6" />
+                    </svg>
                     <span>Least affordable</span>
                   </div>
                 </div>
@@ -130,7 +137,9 @@ export default async function RankingsPage() {
               >
                 <div className="flex items-center gap-4 mb-3">
                   <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center group-hover:bg-purple-200 transition-colors">
-                    <Users className="w-6 h-6 text-purple-600" />
+                    <svg className="w-6 h-6 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5-10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                    </svg>
                   </div>
                   <div>
                     <h3 className="text-xl font-bold text-gray-900 group-hover:text-blue-600">
@@ -141,24 +150,30 @@ export default async function RankingsPage() {
                 </div>
                 <div className="flex gap-4 text-sm">
                   <div className="flex items-center gap-1 text-green-600">
-                    <TrendingDown className="w-4 h-4" />
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                    </svg>
                     <span>Most affordable</span>
                   </div>
                   <div className="flex items-center gap-1 text-red-600">
-                    <TrendingUp className="w-4 h-4" />
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 17l8-8m0 0V9m0 0l-8 8-4-4-6 6" />
+                    </svg>
                     <span>Least affordable</span>
                   </div>
                 </div>
               </Link>
 
-              {/* Mid-Size & Small Cities */}
+              {/* Mid-Size Cities */}
               <Link
                 href="/rankings/mid-size-cities"
                 className="group block bg-white border-2 border-gray-200 hover:border-blue-500 rounded-xl p-6 transition-all"
               >
                 <div className="flex items-center gap-4 mb-3">
                   <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-200 transition-colors">
-                    <Users className="w-6 h-6 text-green-600" />
+                    <svg className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11v4m-4-4v4m-4 4h8M5 3h2a2 2 0 002-2V3a2 2 0 012-2h6a2 2 0 012 2v2a2 2 0 01-2 2z" />
+                    </svg>
                   </div>
                   <div>
                     <h3 className="text-xl font-bold text-gray-900 group-hover:text-blue-600">
@@ -179,7 +194,9 @@ export default async function RankingsPage() {
               >
                 <div className="flex items-center gap-4 mb-3">
                   <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center group-hover:bg-orange-200 transition-colors">
-                    <Users className="w-6 h-6 text-orange-600" />
+                    <svg className="w-6 h-6 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 001 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                    </svg>
                   </div>
                   <div>
                     <h3 className="text-xl font-bold text-gray-900 group-hover:text-blue-600">
