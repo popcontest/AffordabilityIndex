@@ -29,7 +29,7 @@ export default function V2ScoreCard({ score, placeName }: V2ScoreCardProps) {
     return (
       <div className="border rounded-lg p-6 bg-gray-50">
         <h3 className="text-lg font-semibold mb-2">Affordability Score</h3>
-        <p className="text-gray-600">V2 score not available for this location.</p>
+        <p className="text-gray-600">Affordability score not available for this location.</p>
       </div>
     );
   }
@@ -120,7 +120,7 @@ function ScoreBar({ label, score, description }: ScoreBarProps) {
         <span className="font-medium text-gray-700">{label}</span>
         <span className="text-gray-900 font-semibold">{roundedScore}</span>
       </div>
-      <div className="w-full bg-gray-200 rounded-full h-2">
+      <div className="w-full bg-gray-200 rounded-full h-2" role="progressbar" aria-valuenow={roundedScore} aria-valuemin={0} aria-valuemax={100} aria-label={`${label} score: ${roundedScore} out of 100. ${description}`}>
         <div
           className={`h-2 rounded-full ${getBarColor(score)}`}
           style={{ width: `${roundedScore}%` }}

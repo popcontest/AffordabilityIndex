@@ -58,21 +58,21 @@ export default async function Home() {
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-ai-warm-subtle border border-ai-warm-light">
               <BloomIcon className="w-4 h-4 text-ai-warm" />
               <span className="text-sm font-medium text-ai-text-muted">
-                19,000+ cities • Updated monthly
+                19,000+ places • Varying data coverage • Updated monthly
               </span>
             </div>
 
             {/* Headline with warm accent + handwritten flourish */}
             <div className="space-y-4">
               <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight text-ai-text">
-                Should You Move There? <br />
+                Compare Affordability <br />
                 <span className="relative inline-block">
-                  <span className="text-ai-warm">Get Real Numbers</span>
+                  <span className="text-ai-warm">Across America</span>
                   <HandUnderline />
                 </span>
               </h1>
               <p className="text-lg sm:text-xl text-ai-text-muted max-w-2xl mx-auto leading-relaxed">
-                Before you relocate, negotiate salary, or buy - compare income vs. housing costs across 19,000+ US cities
+                Compare home value-to-income ratios across 19,000+ US places
               </p>
             </div>
 
@@ -84,7 +84,7 @@ export default async function Home() {
                 </h3>
                 <SearchBox />
                 <p className="text-xs text-ai-text-subtle mt-2.5 px-1">
-                  Try "Austin, TX" → See income requirements, cost breakdown, and similar cities
+                  Try "Austin, TX" → View home value-to-income ratio and affordability score
                 </p>
               </div>
             </div>
@@ -106,47 +106,62 @@ export default async function Home() {
                 How It Works
               </Link>
             </div>
+
+            {/* Data vintage and source badges */}
+            <div className="flex flex-wrap justify-center items-center gap-4 pt-4">
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-ai-bg border border-ai-border">
+                <SproutIcon className="w-4 h-4 text-ai-text-muted" />
+                <div className="text-left">
+                  <p className="text-xs font-medium text-ai-text">Data from Zillow & US Census</p>
+                  <p className="text-xs text-ai-text-subtle">Zillow (current) + Census ACS 2018-2022</p>
+                </div>
+              </div>
+              <div className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-ai-bg border border-ai-border">
+                <BloomIcon className="w-4 h-4 text-ai-warm" />
+                <span className="text-xs font-medium text-ai-text">Updated monthly</span>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
       {/* Emotional Hook - Use Cases */}
-      <section className="py-16 bg-ai-warm-subtle">
+      <section className="py-16 bg-ai-warm-subtle" aria-labelledby="use-cases-heading">
         <div className="max-w-5xl mx-auto px-4 text-center">
-          <h2 className="text-2xl sm:text-3xl font-bold text-ai-text mb-6">
+          <h2 id="use-cases-heading" className="text-2xl sm:text-3xl font-bold text-ai-text mb-6">
             Before You Make Big Decisions
           </h2>
           <div className="grid md:grid-cols-3 gap-8">
-            <div className="p-6 bg-ai-surface rounded-[var(--ai-radius-card)] border border-ai-border shadow-[var(--ai-shadow-card)]">
-              <div className="text-4xl mb-3">🏠</div>
+            <article className="p-6 bg-ai-surface rounded-[var(--ai-radius-card)] border border-ai-border shadow-[var(--ai-shadow-card)]">
+              <div className="text-4xl mb-3" aria-hidden="true">🏠</div>
               <h3 className="font-semibold text-ai-text mb-2">Considering Relocation?</h3>
               <p className="text-sm text-ai-text-muted leading-relaxed">
                 See if that target city is actually affordable on your budget before making the move
               </p>
-            </div>
-            <div className="p-6 bg-ai-surface rounded-[var(--ai-radius-card)] border border-ai-border shadow-[var(--ai-shadow-card)]">
-              <div className="text-4xl mb-3">💼</div>
+            </article>
+            <article className="p-6 bg-ai-surface rounded-[var(--ai-radius-card)] border border-ai-border shadow-[var(--ai-shadow-card)]">
+              <div className="text-4xl mb-3" aria-hidden="true">💼</div>
               <h3 className="font-semibold text-ai-text mb-2">Evaluating Job Offers?</h3>
               <p className="text-sm text-ai-text-muted leading-relaxed">
                 Calculate if the salary truly covers living costs, not just rent
               </p>
-            </div>
-            <div className="p-6 bg-ai-surface rounded-[var(--ai-radius-card)] border border-ai-border shadow-[var(--ai-shadow-card)]">
-              <div className="text-4xl mb-3">📈</div>
+            </article>
+            <article className="p-6 bg-ai-surface rounded-[var(--ai-radius-card)] border border-ai-border shadow-[var(--ai-shadow-card)]">
+              <div className="text-4xl mb-3" aria-hidden="true">📈</div>
               <h3 className="font-semibold text-ai-text mb-2">Planning Ahead?</h3>
               <p className="text-sm text-ai-text-muted leading-relaxed">
                 Research where your career and income could go furthest
               </p>
-            </div>
+            </article>
           </div>
         </div>
       </section>
 
       {/* (3) PROOF - How AffordabilityIndex Works (3-step story) */}
-      <section className="py-20 bg-ai-bg">
+      <section className="py-20 bg-ai-bg" aria-labelledby="how-it-works-heading">
         <div className="max-w-6xl mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-bold text-ai-text mb-3">
+            <h2 id="how-it-works-heading" className="text-3xl sm:text-4xl font-bold text-ai-text mb-3">
               How We Help You Compare
             </h2>
             <p className="text-lg text-ai-text-muted max-w-2xl mx-auto">
@@ -155,23 +170,22 @@ export default async function Home() {
           </div>
 
           <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-            {/* Step 1: v1 score */}
-            <div className="bg-ai-surface rounded-[var(--ai-radius-card)] border border-ai-border p-8 shadow-[var(--ai-shadow-card)] hover:shadow-[var(--ai-shadow-card-hover)] transition-shadow">
-              <div className="w-12 h-12 bg-ai-warm-subtle rounded-[var(--ai-radius-md)] flex items-center justify-center mb-5">
+            {/* Step 1: Calculate affordability score */}
+            <article className="bg-ai-surface rounded-[var(--ai-radius-card)] border border-ai-border p-8 shadow-[var(--ai-shadow-card)] hover:shadow-[var(--ai-shadow-card-hover)] transition-shadow">
+              <div className="w-12 h-12 bg-ai-warm-subtle rounded-[var(--ai-radius-md)] flex items-center justify-center mb-5" aria-hidden="true">
                 <ScaleIcon className="w-7 h-7 text-ai-warm" />
               </div>
               <h3 className="text-xl font-semibold text-ai-text mb-3">
-                Income vs Housing
+                Home Value-to-Income Ratio
               </h3>
               <p className="text-ai-text-muted leading-relaxed">
-                Compare median home value to median household income. Lower
-                ratios mean homes cost less relative to what people earn.
+                Compare median home value to median household income. A ratio of 3.0 means homes cost 3× annual income (more affordable), while 8.0 means homes cost 8× income (less affordable). Lower ratios = better affordability.
               </p>
-            </div>
+            </article>
 
-            {/* Step 2: v2 basket */}
-            <div className="bg-ai-surface rounded-[var(--ai-radius-card)] border border-ai-border p-8 shadow-[var(--ai-shadow-card)] hover:shadow-[var(--ai-shadow-card-hover)] transition-shadow">
-              <div className="w-12 h-12 bg-ai-warm-subtle rounded-[var(--ai-radius-md)] flex items-center justify-center mb-5">
+            {/* Step 2: Cost of living adjustment */}
+            <article className="bg-ai-surface rounded-[var(--ai-radius-card)] border border-ai-border p-8 shadow-[var(--ai-shadow-card)] hover:shadow-[var(--ai-shadow-card-hover)] transition-shadow">
+              <div className="w-12 h-12 bg-ai-warm-subtle rounded-[var(--ai-radius-md)] flex items-center justify-center mb-5" aria-hidden="true">
                 <PetalIcon className="w-7 h-7 text-ai-warm" />
               </div>
               <h3 className="text-xl font-semibold text-ai-text mb-3">
@@ -181,11 +195,11 @@ export default async function Home() {
                 For select cities, we include essentials: groceries, utilities,
                 transportation, and childcare for a complete picture.
               </p>
-            </div>
+            </article>
 
             {/* Step 3: Compare */}
-            <div className="bg-ai-surface rounded-[var(--ai-radius-card)] border border-ai-border p-8 shadow-[var(--ai-shadow-card)] hover:shadow-[var(--ai-shadow-card-hover)] transition-shadow">
-              <div className="w-12 h-12 bg-ai-warm-subtle rounded-[var(--ai-radius-md)] flex items-center justify-center mb-5">
+            <article className="bg-ai-surface rounded-[var(--ai-radius-card)] border border-ai-border p-8 shadow-[var(--ai-shadow-card)] hover:shadow-[var(--ai-shadow-card-hover)] transition-shadow">
+              <div className="w-12 h-12 bg-ai-warm-subtle rounded-[var(--ai-radius-md)] flex items-center justify-center mb-5" aria-hidden="true">
                 <BloomIcon className="w-7 h-7 text-ai-warm" />
               </div>
               <h3 className="text-xl font-semibold text-ai-text mb-3">
@@ -195,7 +209,7 @@ export default async function Home() {
                 Compare 50k+ cities, 10k-50k small cities, and towns under 10k.
                 Also search by ZIP code for precise local insights.
               </p>
-            </div>
+            </article>
           </div>
         </div>
       </section>

@@ -28,8 +28,8 @@ import { FitSignals } from '@/components/FitSignals';
 import { ScoreHero } from '@/components/ScoreHero';
 import { ScoreBreakdownPanel } from '@/components/ScoreBreakdownPanel';
 import { TrueAffordabilitySection } from '@/components/TrueAffordabilitySection';
-import V2ScoreCard from '@/components/V2ScoreCard';
 import { StaticCityMap } from '@/components/StaticCityMap';
+import { DataSourceBadge } from '@/components/DataSourceBadge';
 import {
   formatCurrency,
   formatRatio,
@@ -149,7 +149,7 @@ async function renderCityDashboard(
     console.error('Failed to fetch V2 score:', error);
   }
 
-  // Build score breakdown - use V2 composite score if available, otherwise use dashboard score
+  // Build score breakdown
   const heroScore = buildV2ScoreBreakdown(v2Score);
 
   const breadcrumbItems = [
@@ -171,27 +171,53 @@ async function renderCityDashboard(
   // Extract state averages from benchmarks (second row if available)
   const stateAvg = dashboardData.benchmarks.length > 1 ? dashboardData.benchmarks[1] : null;
 
-  // FAQ items
+  // FAQ items - expanded with improved answers
   const faqItems = [
     {
       question: `What is the affordability ratio for ${city.name}?`,
       answer: metrics?.ratio
-        ? `The affordability ratio for ${city.name} is ${formatRatio(metrics.ratio)}, meaning the median home value is ${formatRatio(metrics.ratio)} times the median household income. ${deriveAffordabilityLabel(metrics.ratio)} compared to national averages.`
-        : `Affordability ratio data for ${city.name} is currently being processed.`,
+        ? `The affordability ratio for ${city.name} is ${formatRatio(metrics.ratio)}, meaning the median home value is ${formatRatio(metrics.ratio)} times the median household income. ${deriveAffordabilityLabel(metrics.ratio)} compared to national averages. <strong>Example:</strong> With a ${formatRatio(metrics.ratio)} ratio, a $100,000 income would typically buy a $${(100000 * metrics.ratio).toLocaleString()} home. A lower ratio means homes are more affordable relative to local incomes. ${city.name} ranks ${dashboardData.rankData?.stateRank ? `#${dashboardData.rankData.stateRank} out of ${dashboardData.rankData.stateCount} places in ${state.name}` : 'somewhere in the middle'} by this measure.`
+        : `Affordability ratio data for ${city.name} is currently being processed. Check back soon.`,
     },
     {
       question: `How affordable is ${city.name} compared to other places in ${state.name}?`,
-      answer: `Visit the ${state.name} affordability page to see rankings of the most and least affordable places in the state. This page shows nearby alternatives for comparison.`,
+      answer: `${city.name} ${metrics?.ratio && metrics.ratio < 4 ? 'is among the more affordable' : metrics?.ratio && metrics.ratio < 5.5 ? 'has mid-range affordability' : 'is less affordable than'} places in ${state.name}. <strong>Real-world context:</strong> ${metrics?.ratio && metrics.ratio < 3.5 ? 'At this ratio, homeownership is within reach for most households, similar to affordable Midwest cities.' : metrics?.ratio && metrics.ratio < 5 ? 'This is typical for many suburban areas - manageable with careful budgeting.' : 'This level means many households face significant housing cost burdens.'} Visit the ${state.name} affordability page to see rankings of the most and least affordable places in the state. You'll also find nearby alternatives listed above that offer different price points for comparison.`,
     },
     {
       question: 'What is earning power?',
-      answer:
-        'Earning power is the inverse of the affordability ratio (income divided by home value). Higher earning power means incomes are stronger relative to home values. Learn more on our methodology page.',
+      answer: `Earning power is the inverse of the affordability ratio (income dividedided by home value). Higher earning power means incomes are stronger relative to home values, indicating better housing affordability for local residents. ${city.name}'s earning power is ${metrics?.earningPower ? metrics.earningPower.toFixed(4) : 'being calculated'}. <strong>Example:</strong> ${metrics?.earningPower ? `With this earning power, every $1,000 in monthly income can buy approximately $${(metrics.earningPower * 1000).toFixed(0)} in home value.` : ''} This metric helps you compare how far local incomes go toward housing costs across different cities. Learn more on our methodology page.`,
     },
     {
       question: 'Where does this data come from?',
-      answer:
-        'Our data comes from Zillow ZHVI (home values) and US Census ACS 5-year estimates (income). See the sources section at the bottom of this page for complete attribution.',
+      answer: `Our data comes from two trusted sources: Zillow Home Value Index (ZHVI) for median home values, updated monthly, and the U.S. Census Bureau's American Community Survey (ACS) 5-year estimates for median household income, updated annually. See the sources section at the bottom of this page for complete attribution, including specific data vintage years and update schedules.`,
+    },
+    {
+      question: `Can I afford to buy a home in ${city.name}?`,
+      answer: metrics?.homeValue && metrics?.income
+        ? `The median home in ${city.name} costs $${metrics.homeValue.toLocaleString()}. To comfortably afford this, you'd typically need a household income of at least $${Math.round(metrics.homeValue / 3.5).toLocaleString()}/year. <strong>Concrete example:</strong> If you earn $${(metrics.income / 1000).toFixed(0)}K, the median home would cost ${metrics.ratio?.toFixed(1)}× your income${metrics.ratio && metrics.ratio > 5 ? ', which is above the 3-4× most financial experts recommend' : metrics.ratio && metrics.ratio < 4 ? ', which is within the affordable range' : ''}. The median household income here is $${metrics.income.toLocaleString()}, making homeownership ${metrics.ratio && metrics.ratio < 4 ? 'quite accessible' : metrics.ratio && metrics.ratio < 5.5 ? 'moderately affordable' : 'challenging'} for the average resident. Use our calculator above to see how your income compares.`
+        : `Affordability data for ${city.name} is being processed.`,
+    },
+    {
+      question: 'Why is the income data so old?',
+      answer: `We use the U.S. Census Bureau's American Community Survey (ACS) 5-year estimates for income data. This averages survey responses over a 5-year period to provide stable estimates for smaller cities and neighborhoods. While this means income data lags current conditions by 1-2 years, it's necessary for reliable geographic-level data. <strong>Example:</strong> The 2022 5-year estimate (released Dec 2023) averages data from 2018-2022. In contrast, Zillow home values are updated monthly. We update income data annually when new ACS estimates are released (typically each December).`,
+    },
+    {
+      question: `How accurate is this data for small cities like ${city.name}?`,
+      answer: city.population && city.population < 25000
+        ? `For smaller cities like ${city.name} (population: ${city.population.toLocaleString()}), Census income estimates have higher margins of error due to smaller sample sizes. This is normal for cities under 25,000 people. <strong>Example:</strong> The margin of error might be ±15-20% for income in small cities, versus ±3-5% for larger cities. The affordability ratio should be used as a general guide rather than a precise measure. For more robust estimates, consider looking at county-level data or larger nearby cities.`
+        : `With ${city.population?.toLocaleString() || 'a sizable population'}, ${city.name} has relatively reliable income estimates from the Census. However, all survey-based data has margins of error, and recent economic changes may not be fully reflected yet. <strong>Example:</strong> If the median income is $60,000, the true value might be $57,000-$63,000. Use this as a starting point for your housing affordability research.`,
+    },
+    {
+      question: 'Can I use this to qualify for a mortgage?',
+      answer: `No. The affordability ratio is designed for <strong>geographic comparison</strong>, not mortgage qualification. Lenders consider many factors not captured here: your credit score, debt-to-income ratio, down payment amount, current interest rates, property taxes, homeowners insurance, and closing costs. <strong>Example:</strong> Two cities might both have a 4.0 affordability ratio, but if one has 2% property taxes and the other has 0.5% taxes, the monthly payment difference could be hundreds of dollars. To get pre-approved for a mortgage, contact a lender directly. They'll review your complete financial situation and tell you exactly how much you can borrow.`,
+    },
+    {
+      question: "What's missing from this affordability measure?",
+      answer: `Our affordability ratio only considers home value relative to income. It doesn't include: mortgage interest rates (which dramatically affect monthly payments), property taxes, homeowners insurance, HOA fees, closing costs, down payment requirements, ongoing maintenance costs, or your other debts. <strong>Real-world example:</strong> A $400K home with 20% down at 6.2% interest costs ~$2,400/month in principal & interest. Add $400/month property tax, $200/month insurance, and you're at $3,000/month before utilities or maintenance. A home with a good ratio might still be unaffordable if property taxes are high or you have significant student loans. Use our True Affordability section above for a more complete picture that includes taxes and other costs.`,
+    },
+    {
+      question: 'How often is this data updated?',
+      answer: `Zillow home value data is updated monthly (typically released mid-month for the prior month). <strong>Example:</strong> Home values for January 2025 would be released in mid-February 2025. Census income data is updated annually when new 5-year ACS estimates are released, usually each December. We refresh our data as soon as new sources are available. The 'Last Updated' date in the toolbar above shows when home values were last refreshed. Income data vintage is noted in the Sources section below.`,
     },
   ];
 
@@ -231,6 +257,16 @@ async function renderCityDashboard(
             <ScoreHero score={heroScore} locationName={`${city.name}, ${state.abbr}`} requiredIncome={requiredIncome} />
           </div>
         </div>
+
+        {/* Data Source Badge - Prominent Display */}
+        <div className="mt-6 flex justify-center">
+          <DataSourceBadge
+            variant="horizontal"
+            zillowDate={metrics?.asOfDate}
+            acsVintage={metrics?.sources?.acsVintage}
+            showUpdateFrequency={true}
+          />
+        </div>
       </div>
 
       <DashboardShell
@@ -245,11 +281,6 @@ async function renderCityDashboard(
           <ScoreBreakdownPanel score={heroScore} />
         </div>
 
-        {/* V2 Affordability Score Card */}
-        <div className="mb-12">
-          <V2ScoreCard score={v2Score} placeName={city.name} />
-        </div>
-
         {!hasMetrics && (
           <Panel>
             <div className="text-center py-6">
@@ -262,7 +293,7 @@ async function renderCityDashboard(
 
         {hasMetrics && (
           <>
-            {/* True Affordability Section - V2 Feature */}
+            {/* True Affordability Section */}
             <div className="mb-12">
               <h2 className="text-2xl font-bold text-gray-900 mb-4">True Affordability by Household Type</h2>
               <p className="text-gray-600 mb-6">
@@ -336,11 +367,13 @@ async function renderCityDashboard(
                   label="Median Home Value"
                   value={formatCurrency(metrics.homeValue)}
                   subvalue={metrics.asOfDate ? formatDateShort(metrics.asOfDate) : undefined}
+                  source="Zillow ZHVI"
                 />
                 <KpiCardDense
-                  label="Median Income"
+                  label="Median Household Income"
                   value={formatCurrency(metrics.income)}
-                  subvalue="Household annual"
+                  subvalue="Annual income"
+                  source="US Census ACS"
                 />
                 <KpiCardDense
                   label="Earning Power"

@@ -6,6 +6,7 @@
  */
 
 import { useState } from 'react';
+import { MOEIndicator, MOEDot } from './MOEIndicator';
 
 interface HousingEconomicContextProps {
   medianRent: number;
@@ -33,13 +34,6 @@ export function HousingEconomicContext({
   vintage,
 }: HousingEconomicContextProps) {
   const [isExpanded, setIsExpanded] = useState(false); // Collapsed by default
-
-  // Calculate coefficient of variation for reliability flags
-  const rentCv = (medianRentMoe / 1.645) / medianRent;
-  const burdenCv = housingBurdenPct && housingBurdenPctMoe
-    ? (housingBurdenPctMoe / 1.645) / housingBurdenPct
-    : null;
-  const povertyCv = (povertyRatePctMoe / 1.645) / povertyRatePct;
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
@@ -83,19 +77,14 @@ export function HousingEconomicContext({
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="text-sm font-medium text-gray-700 mb-1">Median Rent</div>
-                  <div className="flex items-baseline gap-2">
+                  <div className="flex items-baseline gap-2 mb-2">
                     <div className="text-2xl font-bold text-gray-900">
                       ${medianRent.toLocaleString()}<span className="text-base text-gray-600">/mo</span>
                     </div>
-                    {rentCv > 0.15 && rentCv < 0.30 && (
-                      <span className="text-xs text-amber-600 font-medium">⚠</span>
-                    )}
                   </div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    ±${medianRentMoe.toLocaleString()}
-                    {rentCv > 0.15 && rentCv < 0.30 && (
-                      <span className="ml-2 text-amber-600">Moderate confidence</span>
-                    )}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <MOEIndicator value={medianRent} moe={medianRentMoe} size="sm" />
+                    <MOEDot value={medianRent} moe={medianRentMoe} showLabel={false} />
                   </div>
                 </div>
                 {stateComparison?.medianRent && (
@@ -117,24 +106,22 @@ export function HousingEconomicContext({
             </div>
 
             {/* Housing Cost Burden */}
-            {housingBurdenPct !== null && (
+            {housingBurdenPct !== null && housingBurdenPctMoe !== null && (
               <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="text-sm font-medium text-gray-700 mb-1">Housing Cost Burden</div>
-                    <div className="flex items-baseline gap-2">
+                    <div className="flex items-baseline gap-2 mb-2">
                       <div className="text-2xl font-bold text-gray-900">
                         {housingBurdenPct.toFixed(1)}%
                       </div>
-                      {burdenCv && burdenCv > 0.15 && burdenCv < 0.30 && (
-                        <span className="text-xs text-amber-600 font-medium">⚠</span>
-                      )}
                     </div>
-                    <div className="text-xs text-gray-500 mt-1">
+                    <div className="text-xs text-gray-500 mb-2">
                       of households spend 30%+ on housing
-                      {burdenCv && burdenCv > 0.15 && burdenCv < 0.30 && (
-                        <span className="ml-2 text-amber-600">Moderate confidence</span>
-                      )}
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <MOEIndicator value={housingBurdenPct} moe={housingBurdenPctMoe} size="sm" />
+                      <MOEDot value={housingBurdenPct} moe={housingBurdenPctMoe} showLabel={false} />
                     </div>
                   </div>
                   {stateComparison?.housingBurdenPct && (
@@ -161,19 +148,17 @@ export function HousingEconomicContext({
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="text-sm font-medium text-gray-700 mb-1">Poverty Rate</div>
-                  <div className="flex items-baseline gap-2">
+                  <div className="flex items-baseline gap-2 mb-2">
                     <div className="text-2xl font-bold text-gray-900">
                       {povertyRatePct.toFixed(1)}%
                     </div>
-                    {povertyCv > 0.15 && povertyCv < 0.30 && (
-                      <span className="text-xs text-amber-600 font-medium">⚠</span>
-                    )}
                   </div>
-                  <div className="text-xs text-gray-500 mt-1">
+                  <div className="text-xs text-gray-500 mb-2">
                     of residents below poverty line
-                    {povertyCv > 0.15 && povertyCv < 0.30 && (
-                      <span className="ml-2 text-amber-600">Moderate confidence</span>
-                    )}
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <MOEIndicator value={povertyRatePct} moe={povertyRatePctMoe} size="sm" />
+                    <MOEDot value={povertyRatePct} moe={povertyRatePctMoe} showLabel={false} />
                   </div>
                 </div>
                 {stateComparison?.povertyRatePct && (
@@ -203,27 +188,10 @@ export function HousingEconomicContext({
               </svg>
               <p className="text-xs text-gray-500 flex-1">
                 Source: U.S. Census Bureau American Community Survey {vintage} 5-year estimates.
-                Margins of error shown for reference.{' '}
-                <button className="text-blue-600 hover:underline" onClick={(e) => {
-                  e.stopPropagation();
-                  // Could open a modal with data quality information
-                }}>
-                  Learn about data quality
-                </button>
+                All metrics are survey-based estimates with margins of error shown above.
+                Higher confidence = lower margin of error = more reliable estimate.
               </p>
             </div>
-            {(rentCv > 0.15 || (burdenCv && burdenCv > 0.15) || povertyCv > 0.15) && (
-              <div className="mt-3 p-3 bg-amber-50 border border-amber-100 rounded-md">
-                <div className="flex items-start gap-2">
-                  <svg className="w-4 h-4 text-amber-600 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                  </svg>
-                  <p className="text-xs text-amber-800">
-                    ⚠ Warning: Some metrics have moderate confidence due to smaller sample sizes. Use with caution.
-                  </p>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       )}

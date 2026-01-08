@@ -53,25 +53,24 @@ export function FitSignals({
 
   // National percentile ranking (computed from DB using window functions)
   // usPercentile = (1 - cume_dist()) * 100 = percent of cities with WORSE affordability
-  // So usPercentile=90 means "top ~10% most affordable" (ties may blur the exact %)
+  // So usPercentile=90 means "more affordable than 90% of US cities"
   if (usPercentile !== null) {
-    // Clamp to prevent edge cases from float issues
-    const topPct = Math.min(100, Math.max(1, Math.round(100 - usPercentile)));
+    const roundedPercentile = Math.round(usPercentile);
 
     if (usPercentile >= 90) {
       signals.push({
         type: 'positive',
-        message: `Ranks in top ~${topPct}% most affordable US cities`,
+        message: `More affordable than ${roundedPercentile}% of US cities ↑`,
       });
     } else if (usPercentile >= 75) {
       signals.push({
         type: 'positive',
-        message: `Ranks in top ~${topPct}% most affordable US cities`,
+        message: `More affordable than ${roundedPercentile}% of US cities ↑`,
       });
     } else if (usPercentile <= 10) {
       signals.push({
         type: 'negative',
-        message: `Ranks outside top ~${topPct}% (among the less affordable cities nationally)`,
+        message: `Less affordable than ${100 - roundedPercentile}% of US cities ↓`,
       });
     }
   }
@@ -81,12 +80,17 @@ export function FitSignals({
     if (stateRank === 1) {
       signals.push({
         type: 'positive',
-        message: `Most affordable city in ${stateAbbr} (ranked #1 of ${stateCount})`,
+        message: `Most affordable city in ${stateAbbr} (ranked #1 of ${stateCount}) - no other cities in the state have better home value-to-income ratios`,
       });
     } else if (stateRank <= 3 && stateCount >= 10) {
       signals.push({
         type: 'positive',
-        message: `Ranked #${stateRank} most affordable of ${stateCount} cities in ${stateAbbr}`,
+        message: `Ranked #${stateRank} most affordable of ${stateCount} cities in ${stateAbbr} - only ${stateRank - 1} cities have better ratios`,
+      });
+    } else if (stateRank <= 10 && stateCount >= 20) {
+      signals.push({
+        type: 'positive',
+        message: `Top 10 most affordable in ${stateAbbr} (ranked #${stateRank} of ${stateCount} cities)`,
       });
     }
   }
@@ -128,12 +132,27 @@ export function FitSignals({
     if (ratio < 3.0) {
       signals.push({
         type: 'positive',
-        message: 'Excellent value for buyers prioritizing low home prices',
+        message: `Excellent value (ratio: ${ratio.toFixed(1)}) - typical homes cost only ${ratio.toFixed(1)}× local income, similar to affordable Midwest cities like Cleveland and Detroit`,
       });
-    } else if (ratio > 7.0 && income !== null && income < 80000) {
+    } else if (ratio >= 3.0 && ratio < 4.5) {
+      signals.push({
+        type: 'positive',
+        message: `Good affordability (ratio: ${ratio.toFixed(1)}) - most experts consider 3-4× income manageable for homeownership`,
+      });
+    } else if (ratio >= 4.5 && ratio < 6.0) {
+      signals.push({
+        type: 'neutral',
+        message: `Moderate affordability (ratio: ${ratio.toFixed(1)}) - many households need to budget carefully or consider smaller homes`,
+      });
+    } else if (ratio >= 6.0 && ratio < 8.0) {
       signals.push({
         type: 'negative',
-        message: 'Challenging affordability for median local incomes',
+        message: `Challenging affordability (ratio: ${ratio.toFixed(1)}) - homes cost 6-8× local income, seen in some expensive coastal markets`,
+      });
+    } else if (ratio >= 8.0) {
+      signals.push({
+        type: 'negative',
+        message: `Severe affordability challenge (ratio: ${ratio.toFixed(1)}) - similar to San Francisco or New York, where only high-income households can comfortably afford homes`,
       });
     }
   }
