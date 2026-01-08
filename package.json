@@ -5,8 +5,14 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build --webpack",
+    "build:analyze": "ANALYZE=true npm run build",
     "start": "next start",
     "lint": "eslint",
+    "check-bundle": "node scripts/check-bundle-size.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "audit:visual": "node scripts/visual-audit.mjs",
@@ -18,32 +24,43 @@
     "postinstall": "prisma generate"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.71.2",
-    "@google/generative-ai": "^0.24.1",
     "@prisma/adapter-pg": "^7.1.0",
     "@prisma/client": "^7.1.0",
+    "@upstash/ratelimit": "^2.0.7",
+    "@upstash/redis": "^1.36.0",
     "autoprefixer": "^10.4.23",
     "dotenv": "^17.2.3",
     "framer-motion": "^12.23.26",
+    "jspdf": "^4.0.0",
+    "jspdf-autotable": "^5.0.7",
     "next": "16.0.10",
-    "openai": "^6.15.0",
     "pg": "^8.16.3",
     "postcss": "^8.5.6",
     "prisma": "^7.1.0",
     "react": "19.2.1",
     "react-dom": "19.2.1",
     "recharts": "^3.6.0",
-    "tailwindcss": "^3.4.19"
+    "tailwindcss": "^3.4.19",
+    "zod": "^4.3.5"
   },
   "devDependencies": {
+    "@next/bundle-analyzer": "^16.1.1",
     "@playwright/test": "^1.57.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.1",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^20",
     "@types/pg": "^8.16.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^5.1.2",
+    "@vitest/ui": "^4.0.16",
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.0.10",
-    "typescript": "^5"
+    "jsdom": "^27.4.0",
+    "typescript": "^5",
+    "vitest": "^4.0.16",
+    "web-vitals": "^5.1.0"
   }
 }
