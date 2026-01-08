@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { PersonaComparisonTable } from './PersonaComparisonTable';
 import { CostBreakdown } from '@/lib/trueAffordability';
+import { TrueAffordabilitySkeleton } from './skeletons';
 
 interface TrueAffordabilitySectionProps {
   geoType: 'CITY' | 'ZCTA';
@@ -114,14 +115,9 @@ export function TrueAffordabilitySection({ geoType, geoId, cityName }: TrueAffor
   const anyErrors = personaData.some((p) => p.error);
   const hasData = personaData.some((p) => p.breakdown);
 
-  // Show loading state
+  // Show loading state with skeleton
   if (allLoading) {
-    return (
-      <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
-        <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-gray-200 border-t-blue-600 mb-4"></div>
-        <p className="text-gray-600">Calculating true affordability for different household types...</p>
-      </div>
-    );
+    return <TrueAffordabilitySkeleton />;
   }
 
   // Show error state if no data loaded

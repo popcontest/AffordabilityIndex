@@ -34,7 +34,7 @@ export function NearbyAlternativesTable({ betterRows, worseRows }: NearbyAlterna
 
   const formatRatio = (val: number | null) => {
     if (val === null) return '—';
-    return val.toFixed(2);
+    return val.toFixed(1);
   };
 
   const columns: ColumnConfig[] = [
@@ -72,7 +72,7 @@ export function NearbyAlternativesTable({ betterRows, worseRows }: NearbyAlterna
     },
     {
       key: 'income',
-      label: 'Income',
+      label: 'Median Household Income',
       align: 'right',
       format: formatCurrency,
     },
