@@ -153,7 +153,7 @@ export function RankingsTable({ cities, title, description }: RankingsTableProps
                     {city.metrics?.ratio !== null && (
                       <div>
                         <span className="text-ai-text-subtle">Ratio:</span>{' '}
-                        <span className="font-semibold text-ai-text">{formatRatio(city.metrics?.ratio)}</span>
+                        <span className="font-semibold text-ai-text">{formatRatio(city.metrics?.ratio ?? null)}</span>
                       </div>
                     )}
                   </div>
