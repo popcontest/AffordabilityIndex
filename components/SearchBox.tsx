@@ -196,7 +196,7 @@ export function SearchBox() {
         <button
           onClick={handleSearch}
           disabled={isLoading || query.trim().length === 0}
-          className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+          className="px-6 py-3 bg-ai-warm text-white font-semibold rounded-lg hover:bg-ai-warm-hover focus:outline-none focus:ring-2 focus:ring-ai-warm focus:ring-offset-2 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
           aria-label="Search"
         >
           {isLoading ? (

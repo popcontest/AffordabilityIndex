@@ -89,26 +89,8 @@ export default async function Home() {
               </div>
             </div>
 
-            {/* Quick actions */}
-            <div className="flex flex-wrap justify-center gap-3 pt-4">
-              <Link
-                href="/rankings/"
-                className="inline-flex items-center px-8 py-4 bg-ai-warm text-white rounded-[var(--ai-radius-lg)] hover:bg-ai-warm-hover transition-colors font-semibold text-base shadow-lg hover:shadow-xl"
-              >
-                <CompassIcon className="w-5 h-5 mr-2" />
-                Browse Affordable Cities
-              </Link>
-              <Link
-                href="/methodology/"
-                className="inline-flex items-center px-6 py-4 bg-ai-surface text-ai-text border-2 border-ai-border rounded-[var(--ai-radius-lg)] hover:bg-ai-surface-elevated transition-colors font-medium text-base"
-              >
-                <ScaleIcon className="w-5 h-5 mr-2" />
-                How It Works
-              </Link>
-            </div>
-
             {/* Social proof - trusted by */}
-            <div className="pt-8 flex flex-wrap justify-center items-center gap-6 text-sm text-ai-text-subtle">
+            <div className="pt-6 pb-4 flex flex-wrap justify-center items-center gap-6 text-sm text-ai-text-subtle">
               <div className="flex items-center gap-2">
                 <svg className="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
@@ -129,6 +111,24 @@ export default async function Home() {
               </div>
             </div>
 
+            {/* Quick actions */}
+            <div className="flex flex-wrap justify-center gap-3 pt-2">
+              <Link
+                href="/rankings/"
+                className="inline-flex items-center px-8 py-4 bg-ai-warm text-white rounded-[var(--ai-radius-lg)] hover:bg-ai-warm-hover transition-colors font-semibold text-base shadow-lg hover:shadow-xl"
+              >
+                <CompassIcon className="w-5 h-5 mr-2" />
+                Browse Affordable Cities
+              </Link>
+              <Link
+                href="/methodology/"
+                className="inline-flex items-center px-6 py-4 bg-ai-surface text-ai-text border-2 border-ai-border rounded-[var(--ai-radius-lg)] hover:bg-ai-surface-elevated transition-colors font-medium text-base"
+              >
+                <ScaleIcon className="w-5 h-5 mr-2" />
+                How It Works
+              </Link>
+            </div>
+
             {/* Data vintage and source badges */}
             <div className="flex flex-wrap justify-center items-center gap-4 pt-4">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-ai-bg border border-ai-border">
@@ -143,38 +143,6 @@ export default async function Home() {
                 <span className="text-xs font-medium text-ai-text">Updated monthly</span>
               </div>
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Emotional Hook - Use Cases */}
-      <section className="py-16 bg-ai-warm-subtle" aria-labelledby="use-cases-heading">
-        <div className="max-w-5xl mx-auto px-4 text-center">
-          <h2 id="use-cases-heading" className="text-2xl sm:text-3xl font-bold text-ai-text mb-6">
-            Before You Make Big Decisions
-          </h2>
-          <div className="grid md:grid-cols-3 gap-8">
-            <article className="p-6 bg-ai-surface rounded-[var(--ai-radius-card)] border border-ai-border shadow-[var(--ai-shadow-card)]">
-              <div className="text-4xl mb-3" aria-hidden="true">🏠</div>
-              <h3 className="font-semibold text-ai-text mb-2">Considering Relocation?</h3>
-              <p className="text-sm text-ai-text-muted leading-relaxed">
-                See if that target city is actually affordable on your budget before making the move
-              </p>
-            </article>
-            <article className="p-6 bg-ai-surface rounded-[var(--ai-radius-card)] border border-ai-border shadow-[var(--ai-shadow-card)]">
-              <div className="text-4xl mb-3" aria-hidden="true">💼</div>
-              <h3 className="font-semibold text-ai-text mb-2">Evaluating Job Offers?</h3>
-              <p className="text-sm text-ai-text-muted leading-relaxed">
-                Calculate if the salary truly covers living costs, not just rent
-              </p>
-            </article>
-            <article className="p-6 bg-ai-surface rounded-[var(--ai-radius-card)] border border-ai-border shadow-[var(--ai-shadow-card)]">
-              <div className="text-4xl mb-3" aria-hidden="true">📈</div>
-              <h3 className="font-semibold text-ai-text mb-2">Planning Ahead?</h3>
-              <p className="text-sm text-ai-text-muted leading-relaxed">
-                Research where your career and income could go furthest
-              </p>
-            </article>
           </div>
         </div>
       </section>
@@ -236,94 +204,47 @@ export default async function Home() {
         </div>
       </section>
 
-      {/* Social Proof - Testimonials */}
-      <section className="py-20 bg-ai-surface" aria-labelledby="testimonials-heading">
-        <div className="max-w-6xl mx-auto px-4">
-          <div className="text-center mb-12">
-            <h2 id="testimonials-heading" className="text-3xl sm:text-4xl font-bold text-ai-text mb-3">
-              Helping Americans Make Smarter Moves
+      {/* (4) EXPLORE - Rankings Sections */}
+      {/* Jump Links Navigation */}
+      <div className="bg-ai-bg border-b border-ai-border py-8">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="text-center mb-6">
+            <h2 className="text-2xl sm:text-3xl font-bold text-ai-text mb-2">
+              Explore Rankings
             </h2>
-            <p className="text-lg text-ai-text-muted max-w-2xl mx-auto">
-              Join thousands who've found their perfect affordable city
-            </p>
+            <p className="text-ai-text-muted">Jump to city size:</p>
           </div>
-
-          <div className="grid md:grid-cols-3 gap-8">
-            {/* Testimonial 1 */}
-            <div className="bg-ai-bg border border-ai-border rounded-[var(--ai-radius-card)] p-8 shadow-sm">
-              <div className="flex items-center gap-1 mb-4">
-                {[...Array(5)].map((_, i) => (
-                  <svg key={i} className="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                  </svg>
-                ))}
-              </div>
-              <p className="text-ai-text-secondary mb-6 leading-relaxed">
-                "We were thinking about moving to California for a job, but AffordabilityIndex showed us we'd need to spend 60% of our income on housing. We stayed in the Midwest and couldn't be happier."
-              </p>
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-ai-warm-subtle rounded-full flex items-center justify-center">
-                  <span className="text-ai-warm font-semibold text-lg">JM</span>
-                </div>
-                <div>
-                  <p className="font-semibold text-ai-text">Jennifer M.</p>
-                  <p className="text-sm text-ai-text-subtle">Chicago, IL</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Testimonial 2 */}
-            <div className="bg-ai-bg border border-ai-border rounded-[var(--ai-radius-card)] p-8 shadow-sm">
-              <div className="flex items-center gap-1 mb-4">
-                {[...Array(5)].map((_, i) => (
-                  <svg key={i} className="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                  </svg>
-                ))}
-              </div>
-              <p className="text-ai-text-secondary mb-6 leading-relaxed">
-                "As a remote worker, I can live anywhere. This site helped me find cities with great affordability ratios and good quality of life. I moved to Boise and bought a house for half what I'd pay in Seattle."
-              </p>
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-ai-warm-subtle rounded-full flex items-center justify-center">
-                  <span className="text-ai-warm font-semibold text-lg">DK</span>
-                </div>
-                <div>
-                  <p className="font-semibold text-ai-text">David K.</p>
-                  <p className="text-sm text-ai-text-subtle">Boise, ID</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Testimonial 3 */}
-            <div className="bg-ai-bg border border-ai-border rounded-[var(--ai-radius-card)] p-8 shadow-sm">
-              <div className="flex items-center gap-1 mb-4">
-                {[...Array(5)].map((_, i) => (
-                  <svg key={i} className="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                  </svg>
-                ))}
-              </div>
-              <p className="text-ai-text-secondary mb-6 leading-relaxed">
-                "Finally, a tool that looks at actual affordability, not just home prices. The income ratio metric helped us understand what we could really afford. We found a great town in Ohio that fits our budget perfectly."
-              </p>
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-ai-warm-subtle rounded-full flex items-center justify-center">
-                  <span className="text-ai-warm font-semibold text-lg">SR</span>
-                </div>
-                <div>
-                  <p className="font-semibold text-ai-text">Sarah R.</p>
-                  <p className="text-sm text-ai-text-subtle">Columbus, OH</p>
-                </div>
-              </div>
-            </div>
+          <div className="flex flex-wrap justify-center gap-3">
+            <a
+              href="#large-cities-affordable"
+              className="px-6 py-3 bg-ai-surface border-2 border-ai-border rounded-lg hover:border-ai-warm hover:text-ai-warm transition font-medium text-sm"
+            >
+              Large Cities
+            </a>
+            <a
+              href="#midsize-cities-affordable"
+              className="px-6 py-3 bg-ai-surface border-2 border-ai-border rounded-lg hover:border-ai-warm hover:text-ai-warm transition font-medium text-sm"
+            >
+              Mid-Size Cities
+            </a>
+            <a
+              href="#small-cities-affordable"
+              className="px-6 py-3 bg-ai-surface border-2 border-ai-border rounded-lg hover:border-ai-warm hover:text-ai-warm transition font-medium text-sm"
+            >
+              Small Cities
+            </a>
+            <a
+              href="#towns-affordable"
+              className="px-6 py-3 bg-ai-surface border-2 border-ai-border rounded-lg hover:border-ai-warm hover:text-ai-warm transition font-medium text-sm"
+            >
+              Towns
+            </a>
           </div>
         </div>
-      </section>
+      </div>
 
-      {/* (4) EXPLORE - Rankings Sections */}
       {/* Most Affordable Large Cities - TABLE (Primary) */}
-      <section className="bg-ai-surface py-16">
+      <section id="large-cities-affordable" className="bg-ai-surface py-16">
         <div className="max-w-7xl mx-auto px-4">
           <RankingsTable
             cities={largeCitiesAffordable}
@@ -334,7 +255,7 @@ export default async function Home() {
       </section>
 
       {/* Most Affordable Mid-Size Cities - TABLE */}
-      <section className="bg-ai-bg py-16">
+      <section id="midsize-cities-affordable" className="bg-ai-bg py-16">
         <div className="max-w-7xl mx-auto px-4">
           <RankingsTable
             cities={citiesAffordable}
@@ -345,7 +266,7 @@ export default async function Home() {
       </section>
 
       {/* Most Affordable Small Cities - TABLE */}
-      <section className="bg-ai-surface py-16">
+      <section id="small-cities-affordable" className="bg-ai-surface py-16">
         <div className="max-w-7xl mx-auto px-4">
           <RankingsTable
             cities={smallCitiesAffordable}
@@ -356,7 +277,7 @@ export default async function Home() {
       </section>
 
       {/* Most Affordable Towns - TABLE */}
-      <section className="bg-ai-bg py-16">
+      <section id="towns-affordable" className="bg-ai-bg py-16">
         <div className="max-w-7xl mx-auto px-4">
           <RankingsTable
             cities={townsAffordable}
