@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import type { Metadata } from 'next';
 import { SearchBox } from '@/components/SearchBox';
 import {
   SproutIcon,
@@ -11,6 +12,7 @@ import { PercentileBadge } from '@/components/PercentileBadge';
 import { PlaceTypeBadge } from '@/components/PlaceTypeBadge';
 import { HandUnderline } from '@/components/HandUnderline';
 import { RankingsTable } from '@/components/RankingsTable';
+import { JsonLd } from '@/components/JsonLd';
 import {
   getNationalLargeCitiesAffordable,
   getNationalLargeCitiesExpensive,
@@ -25,6 +27,59 @@ import type { CityWithMetrics } from '@/lib/data';
 import { stateFromAbbr } from '@/lib/usStates';
 import { formatRatio } from '@/lib/viewModels';
 import { clampScore, scoreToGrade, formatScore } from '@/lib/scoring';
+
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://affordabilityindex.org';
+
+export async function generateMetadata(): Promise<Metadata> {
+  return {
+    title: 'Home Affordability Calculator & Rankings - Find Where Your Dollar Goes Furthest',
+    description: 'Compare home affordability across 19,000+ US cities, towns, and ZIP codes. See home values, median incomes, and affordability scores. Find the most affordable places to live in America.',
+    keywords: [
+      'home affordability',
+      'affordable cities',
+      'cost of living',
+      'home value to income ratio',
+      'most affordable cities',
+      'affordable towns',
+      'housing affordability',
+      'real estate affordability',
+      'where to buy a home',
+      'affordable housing',
+      'median home value',
+      'household income',
+      'affordability calculator',
+      'best places to buy a home',
+      'cheapest cities to live',
+      'housing market',
+      'Zillow home values',
+      'Census income data',
+    ].join(', '),
+    openGraph: {
+      type: 'website',
+      url: siteUrl,
+      title: 'Home Affordability Calculator & Rankings - Find Where Your Dollar Goes Furthest',
+      description: 'Compare home affordability across 19,000+ US cities, towns, and ZIP codes. See home values, median incomes, and affordability scores.',
+      images: [
+        {
+          url: `${siteUrl}/og-image.png`,
+          width: 1200,
+          height: 630,
+          alt: 'Affordability Index - Find Where Your Dollar Goes Furthest',
+        },
+      ],
+      siteName: 'Affordability Index',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: 'Home Affordability Calculator & Rankings - Find Where Your Dollar Goes Furthest',
+      description: 'Compare home affordability across 19,000+ US cities, towns, and ZIP codes. Free tool with data from Zillow & US Census.',
+      images: [`${siteUrl}/og-image.png`],
+    },
+    alternates: {
+      canonical: siteUrl,
+    },
+  };
+}
 
 export default async function Home() {
   // Get featured data nationwide
@@ -48,8 +103,74 @@ export default async function Home() {
     getNationalTownsExpensive(10),
   ]);
 
+  // Create structured data for WebSite schema
+  const webSiteSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: 'Affordability Index',
+    url: siteUrl,
+    description: 'Compare home affordability across 19,000+ US cities, towns, and ZIP codes. See home values, median incomes, and affordability scores.',
+    potentialAction: {
+      '@type': 'SearchAction',
+      target: {
+        '@type': 'EntryPoint',
+        urlTemplate: `${siteUrl}/api/search?q={search_term_string}`,
+      },
+      'query-input': 'required name=search_term_string',
+    },
+  };
+
+  // Create structured data for FAQ
+  const faqSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: [
+      {
+        '@type': 'Question',
+        name: 'How is home affordability calculated?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: 'We calculate home affordability by comparing the median home value to the median household income for each location. A lower ratio (e.g., 3.0) means homes cost 3× annual income (more affordable), while a higher ratio (e.g., 8.0) means homes cost 8× income (less affordable). We use Zillow Home Value Index (ZHVI) for home prices and US Census ACS data for income.',
+        },
+      },
+      {
+        '@type': 'Question',
+        name: 'What is a good home affordability ratio?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: 'A good home affordability ratio is generally considered to be 3.0 or lower, meaning homes cost 3× or less of the median annual income. Ratios between 3.0-4.5 are considered moderately affordable. Ratios above 5.0 are considered expensive, and ratios above 7.0 are severely unaffordable.',
+        },
+      },
+      {
+        '@type': 'Question',
+        name: 'Where can I find the most affordable cities in the US?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: 'The most affordable cities in the US are typically found in the Midwest (e.g., Indiana, Ohio, Michigan) and South (e.g., Alabama, Mississippi). These areas often have affordability ratios below 3.0. Use our rankings to explore affordable cities by population size.',
+        },
+      },
+    ],
+  };
+
+  // Create structured data for Organization
+  const organizationSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name: 'Affordability Index',
+    url: siteUrl,
+    description: 'Free home affordability comparison tool covering 19,000+ US locations',
+    logo: `${siteUrl}/logo.png`,
+    sameAs: [],
+  };
+
   return (
-    <div className="min-h-screen bg-ai-bg">
+    <>
+      {/* Structured Data */}
+      <JsonLd data={webSiteSchema} />
+      <JsonLd data={faqSchema} />
+      <JsonLd data={organizationSchema} />
+
+      <div className="min-h-screen bg-ai-bg">
       {/* (1) HOOK - Hero Section */}
       <section className="bg-ai-surface border-b border-ai-border">
         <div className="max-w-5xl mx-auto px-4 py-20 sm:py-28">
@@ -72,7 +193,7 @@ export default async function Home() {
                 </span>
               </h1>
               <p className="text-lg sm:text-xl text-ai-text-muted max-w-2xl mx-auto leading-relaxed">
-                Discover affordable places to live across America. See home prices, local incomes, and true affordability in one place.
+                Compare home affordability across 19,000+ US cities, towns, and ZIP codes. Find the most affordable places to live in America with data from Zillow and US Census.
               </p>
             </div>
 
@@ -359,6 +480,7 @@ export default async function Home() {
         </div>
       </section>
     </div>
+    </>
   );
 }
 
