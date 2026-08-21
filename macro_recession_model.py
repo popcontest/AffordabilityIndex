@@ -121,6 +121,11 @@ FRED_INDICATORS = {
     "permits": ("PERMIT", "mean"),      # building permits, monthly, 1960->
     "claims": ("ICSA", "mean"),         # initial jobless claims, weekly, 1967->
     "sahm": ("SAHMREALTIME", "last"),   # real-time Sahm rule, monthly, 1959->
+    # --- Monetary policy / central bank ---
+    "fed_funds": ("FEDFUNDS", "mean"),  # effective fed funds rate, 1954->
+    "nfci": ("NFCI", "mean"),           # Chicago Fed financial conditions, weekly, 1971->
+    "m2_real": ("M2REAL", "mean"),      # real M2 money stock, 1959->
+    "fed_assets": ("WALCL", "mean"),    # Fed total assets (QE/QT), weekly, 2002->
 }
 
 #: Yahoo tickers tried in order. ^SPX is the requested symbol; ^GSPC is the
@@ -243,6 +248,22 @@ def _fetch_sp500_yfinance() -> tuple[pd.Series, str]:
     """Preferred path: yfinance, which handles Yahoo's auth dance for us."""
     import yfinance as yf
 
+    # yfinance logs its own multi-line ERROR blocks on a failed download. We
+    # treat that failure as recoverable and fall through to the next source, so
+    # letting its logger shout would put ERROR lines in front of the user for a
+    # path the script handles cleanly. Quiet it for the duration of the attempt.
+    yf_log = logging.getLogger("yfinance")
+    prior_level, prior_disabled = yf_log.level, yf_log.disabled
+    yf_log.setLevel(logging.CRITICAL)
+    yf_log.disabled = True
+    try:
+        return _yfinance_attempts(yf)
+    finally:
+        yf_log.setLevel(prior_level)
+        yf_log.disabled = prior_disabled
+
+
+def _yfinance_attempts(yf):
     errors = []
     for ticker in SP500_TICKERS:
         try:
@@ -592,6 +613,33 @@ def add_derived_metrics(monthly: pd.DataFrame) -> pd.DataFrame:
         # Initial jobless claims, YoY. Rising claims lead payroll losses.
         df["claims_yoy"] = df["claims"].pct_change(12) * 100.0
 
+    # --- Monetary policy stance ------------------------------------------
+    if "fed_funds" in df.columns:
+        # How hard the Fed has tightened over the past year. This is the
+        # mechanism behind the yield curve rather than a rival to it: the curve
+        # inverts largely because the Fed pushes the short end up.
+        df["fed_funds_chg12"] = df["fed_funds"].diff(12)
+        # Policy stance in real terms. A 5% policy rate is loose at 8%
+        # inflation and punishing at 1%, so the nominal rate alone says little.
+        df["real_fed_funds"] = df["fed_funds"] - df["cpi_yoy"]
+    if "m2_real" in df.columns:
+        df["m2_real_yoy"] = df["m2_real"].pct_change(12) * 100.0
+    if "fed_assets" in df.columns:
+        # Balance sheet growth: QE positive, QT negative. Read the caveat on
+        # the signal before drawing any conclusion from this one.
+        df["fed_assets_yoy"] = df["fed_assets"].pct_change(12) * 100.0
+
+    # Composite policy-tightening score, 0-3. The three components are only
+    # loosely related to each other -- the curve and financial conditions
+    # co-fire at phi = +0.16, close to independent -- so agreement between them
+    # is meaningful rather than the same fact counted three times.
+    if {"yield_curve", "fed_funds_chg12", "nfci"} <= set(df.columns):
+        parts = [df["yield_curve"] < 0, df["fed_funds_chg12"] > 2.0, df["nfci"] > 0]
+        available = df[["yield_curve", "fed_funds_chg12", "nfci"]].notna().all(axis=1)
+        df["policy_tightening_score"] = (
+            sum(part.astype(float) for part in parts).where(available)
+        )
+
     # --- Recession flag ----------------------------------------------------
     # USREC is 1 for every month from the month *following* an NBER-dated peak
     # through the month of the trough. NBER announces these dates with a lag of
@@ -809,6 +857,74 @@ SIGNAL_DEFS: list[dict] = [
                 "fires near the start of a downturn rather than ahead of one.",
     },
     {
+        "name": "Policy tightening score (2 of 3)",
+        "short": "Policy tightening 2/3",
+        "column": "policy_tightening_score",
+        "kind": "leading",
+        "condition": ">= 2 of 3",
+        "fires": lambda v: v >= 2,
+        "note": "Agreement between the yield curve, a Fed tightening cycle and tight financial "
+                "conditions. Fires across only six distinct episodes since 1971 -- three followed "
+                "by recessions (1973, 1978-80, 1980-81) and three not (1984, 1989, 2022-23) -- so "
+                "the month-count lift overstates how much evidence there is. The 1989 miss is "
+                "partly an artifact of the 12-month horizon: that recession began in month 14.",
+    },
+    {
+        "name": "Fed funds 12m change",
+        "short": "Fed tightening cycle",
+        "column": "fed_funds_chg12",
+        "kind": "leading",
+        "condition": "> +2.0 pp",
+        "fires": lambda v: v > 2.0,
+        "note": "The Fed raising hard. Related to the yield curve by construction, but not "
+                "redundant with it: restricted to months when the curve is NOT inverted it still "
+                "scores 2.25x, so it catches tightening episodes the curve misses.",
+    },
+    {
+        "name": "Financial conditions tight (NFCI)",
+        "short": "Financial conditions",
+        "column": "nfci",
+        "kind": "leading",
+        "condition": "> 0",
+        "fires": lambda v: v > 0,
+        "note": "Chicago Fed index of credit, leverage and risk conditions; positive means tighter "
+                "than average. Nearly independent of the yield curve (phi +0.16), which makes it "
+                "the most useful complement to it in this table -- when both fire together, "
+                "precision reaches 93% on 29 months.",
+    },
+    {
+        "name": "Real fed funds rate",
+        "short": "Real policy rate",
+        "column": "real_fed_funds",
+        "kind": "leading",
+        "condition": "> +3%",
+        "fires": lambda v: v > 3.0,
+        "note": "Policy rate minus CPI inflation. Restrictive policy in real terms, which is the "
+                "form that actually bites.",
+    },
+    {
+        "name": "Real M2 money supply YoY",
+        "short": "Real M2 YoY",
+        "column": "m2_real_yoy",
+        "kind": "leading",
+        "condition": "< 0%",
+        "fires": lambda v: v < 0,
+        "note": "Inflation-adjusted money stock shrinking.",
+    },
+    {
+        "name": "Fed balance sheet YoY (QT)",
+        "short": "Fed balance sheet (QT)",
+        "column": "fed_assets_yoy",
+        "kind": "leading",
+        "condition": "< 0%",
+        "fires": lambda v: v < 0,
+        "note": "Quantitative tightening. Included because it is the intervention people most "
+                "expect to matter and it does not: lift ~1.0x on a sample covering three "
+                "recessions. Note also that the raw correlation between balance sheet growth and "
+                "the S&P is NEGATIVE (-0.42), which is endogeneity, not evidence QE hurts stocks "
+                "-- the Fed expands the balance sheet precisely when markets are falling.",
+    },
+    {
         "name": "Real retail sales YoY",
         "short": "Real retail sales YoY",
         "column": "retail_yoy_real",
@@ -931,6 +1047,14 @@ def evaluate_signal_skill(
         n, base, prec, rec, lift = score(usable)
         _, _, _, _, lift_ex = score(usable & (since_end > 12))
 
+        # Distinct firing episodes, and how many were followed by a recession.
+        # This is the honest denominator. A signal that stays on for a year
+        # contributes twelve highly correlated months to `precision` but only
+        # one independent test of whether it was right, and the gap between the
+        # two numbers is where false confidence lives: the policy composite
+        # posts 62 firing months that resolve into just six episodes.
+        episodes, hits = _count_episodes(fired[usable].astype(bool), target)
+
         rows.append(
             {
                 "indicator": spec["name"],
@@ -944,6 +1068,8 @@ def evaluate_signal_skill(
                 "recall_pct": _r(rec),
                 "lift": _r(lift),
                 "lift_ex_recovery": _r(lift_ex),
+                "episodes": episodes,
+                "episodes_followed_by_recession": hits,
                 "verdict": _verdict(lift),
                 "note": spec["note"],
             }
@@ -953,6 +1079,27 @@ def evaluate_signal_skill(
     if not table.empty:
         table = table.sort_values("lift", ascending=False, na_position="last").reset_index(drop=True)
     return table
+
+
+def _count_episodes(fired: pd.Series, target: pd.Series, gap_days: int = 200) -> tuple[int, int]:
+    """Collapse a firing mask into distinct episodes and count how many were
+    followed by a recession.
+
+    Consecutive months of the same signal are one event, not many. Two firings
+    more than `gap_days` apart are treated as separate episodes.
+    """
+    times = list(fired.index[fired])
+    if not times:
+        return 0, 0
+    episodes, current = [], [times[0]]
+    for t in times[1:]:
+        if (t - current[-1]).days > gap_days:
+            episodes.append(current)
+            current = []
+        current.append(t)
+    episodes.append(current)
+    hits = sum(1 for ep in episodes if any(bool(target.get(t, False)) for t in ep))
+    return len(episodes), hits
 
 
 def _verdict(lift: float) -> str:
@@ -1368,7 +1515,7 @@ def chart3_signal_skill(df, skill: pd.DataFrame, spans, outpath: Path, dpi: int,
     prettier restatement of chart 1.
     """
     fig, (ax_a, ax_b) = plt.subplots(
-        1, 2, figsize=(16, 7.4), gridspec_kw={"width_ratios": [1.0, 1.05], "wspace": 0.30}
+        1, 2, figsize=(16, 9.6), gridspec_kw={"width_ratios": [1.0, 1.0], "wspace": 0.30}
     )
     fig.patch.set_facecolor(SURFACE)
 
@@ -1418,20 +1565,34 @@ def chart3_signal_skill(df, skill: pd.DataFrame, spans, outpath: Path, dpi: int,
                   textcoords="offset points", fontsize=9, color=INK_SECONDARY, va="center")
 
     ax_b.set_yticks(y)
-    ax_b.set_yticklabels([f"{n}  ({k})" for n, k in zip(bars["short"], bars["kind"])], fontsize=9.5)
+    # Kind on its own line: with sixteen bars the single-line form runs wide
+    # enough to collide with panel A no matter how the gutter is sized.
+    ax_b.set_yticklabels([f"{n}\n({k})" for n, k in zip(bars["short"], bars["kind"])],
+                         fontsize=9.0, linespacing=1.25)
     ax_b.tick_params(axis="y", labelcolor=INK_SECONDARY)
-    ax_b.set_xlim(0, max(3.8, float(bars["lift"].max()) * 1.22))
-    ax_b.set_xlabel(f"Lift: precision ÷ base rate, for a recession starting within {horizon} months",
-                    color=INK_SECONDARY, fontsize=10.5, labelpad=8)
+    ax_b.set_xlim(0, max(4.2, float(bars["lift"].max()) * 1.55))
+    ax_b.set_xlabel(f"Lift: precision ÷ base rate, for a recession starting within {horizon} months\n"
+                    f"'n/m ep' = distinct firing episodes followed by a recession, out of all episodes",
+                    color=INK_SECONDARY, fontsize=10.5, labelpad=10)
     # Integer ticks explicitly: the default locator lands on half-steps, which a
     # "{:.0f}x" formatter renders as duplicated labels (0x 0x 1x 2x 2x 2x).
     ax_b.xaxis.set_major_locator(matplotlib.ticker.MultipleLocator(1.0))
     ax_b.xaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda v, _: f"{v:.0f}x"))
 
-    # Direct-label every bar: nine categories exceed what colour alone may carry.
-    for yi, v in zip(y, bars["lift"]):
+    # Direct-label every bar: far more categories than colour alone may carry.
+    # The episode ratio rides alongside the lift because the two can disagree,
+    # and when they do the episode count is the one to believe -- the policy
+    # composite outranks the yield curve on lift while hitting 3 of 6 episodes
+    # against the curve's 7 of 9.
+    has_eps = {"episodes", "episodes_followed_by_recession"} <= set(bars.columns)
+    for i, (yi, v) in enumerate(zip(y, bars["lift"])):
         ax_b.annotate(f"{v:.2f}x", xy=(v, yi), xytext=(6, 0), textcoords="offset points",
                       va="center", fontsize=9.5, fontweight="bold", color=INK_PRIMARY)
+        if has_eps:
+            row = bars.iloc[i]
+            ax_b.annotate(f"{int(row['episodes_followed_by_recession'])}/{int(row['episodes'])} ep",
+                          xy=(v, yi), xytext=(52, 0), textcoords="offset points",
+                          va="center", fontsize=8.5, color=INK_MUTED)
 
     ax_b.set_title("B.  Measured skill of every indicator in the model",
                    loc="left", fontsize=12.5, fontweight="bold", color=INK_PRIMARY, pad=12)
@@ -1445,7 +1606,7 @@ def chart3_signal_skill(df, skill: pd.DataFrame, spans, outpath: Path, dpi: int,
 
     # Panel B's category labels are long and hang to the left of its axis, so
     # this needs a real gutter rather than the default spacing.
-    fig.subplots_adjust(left=0.055, right=0.975, top=0.855, bottom=0.185, wspace=0.55)
+    fig.subplots_adjust(left=0.055, right=0.975, top=0.875, bottom=0.165, wspace=0.42)
     fig.savefig(outpath, dpi=dpi, facecolor=SURFACE, bbox_inches="tight")
     plt.close(fig)
     log.info("Wrote %s", outpath)
@@ -1537,6 +1698,23 @@ def build_readme(provenance: pd.DataFrame, splice_note: str, spx_source: str, wi
         ("READING lift", "precision divided by the unconditional base rate. 1.0x means the signal "
                          "carries no information: recessions follow it exactly as often as they follow "
                          "any random month. Below 1.0x it fires LESS often before recessions than chance."),
+        ("READING episodes", "Consecutive firing months are ONE event, not many. A signal that stays "
+                             "on for a year contributes twelve correlated months to precision but only "
+                             "one independent test. Where lift and the episode ratio disagree, believe "
+                             "the episode ratio: the policy composite outranks the yield curve on lift "
+                             "(3.65x vs 3.43x) while hitting 3 of 6 episodes against the curve's 7 of 9."),
+        ("FINDING central bank", "Fed tightening (>2pp in 12m) scores 2.73x and financial conditions "
+                                 "(NFCI > 0) 2.76x. Neither is redundant with the yield curve: NFCI "
+                                 "co-fires with it at only phi +0.16, and restricted to months when the "
+                                 "curve is NOT inverted still scores 2.91x. When curve and NFCI fire "
+                                 "together precision reaches 93%, but on 29 months in few episodes -- "
+                                 "suggestive, not established."),
+        ("FINDING QE", "Balance sheet growth does NOT explain the market. The raw correlation between "
+                       "Fed assets YoY and S&P YoY is -0.42, and that negative sign is endogeneity, not "
+                       "evidence QE hurts stocks: the Fed expands the balance sheet precisely when "
+                       "markets are falling. QT as a recession signal scores 1.01x on three recessions. "
+                       "Separately, the market's link to the real economy did not weaken after 2008 -- "
+                       "corr(S&P YoY, real retail YoY) rose from +0.36 (1953-2008) to +0.58 (2009-2026)."),
         ("READING kind", "coincident = describes the present. leading = claims to predict. Only a "
                          "leading indicator with lift above ~1.3 supports a forecasting statement."),
         ("FINDING retail", "Real retail contraction is a strong COINCIDENT marker -- 75.8% of recession "
@@ -1765,11 +1943,12 @@ def _print_summary(monthly, episodes, leadlag, signals, skill, spans, artifacts)
     if not skill.empty:
         print("\nSignal skill -- given the signal fires, does a recession BEGIN within the horizon?")
         print("  (expansion months only; lift = precision / base rate, so 1.0x means no information)")
-        print(f"  {'indicator':<34}{'kind':<12}{'lift':>7}{'ex-recov':>10}   verdict")
+        print(f"  {'indicator':<36}{'kind':<12}{'lift':>7}{'ex-rec':>8}{'episodes':>10}   verdict")
         for _, r in skill.iterrows():
-            lift = f"{r['lift']:.2f}x" if pd.notna(r["lift"]) else "   n/a"
-            ex = f"{r['lift_ex_recovery']:.2f}x" if pd.notna(r["lift_ex_recovery"]) else "   n/a"
-            print(f"  {r['indicator'][:33]:<34}{r['kind']:<12}{lift:>7}{ex:>10}   {r['verdict']}")
+            lift = f"{r['lift']:.2f}x" if pd.notna(r["lift"]) else "  n/a"
+            ex = f"{r['lift_ex_recovery']:.2f}x" if pd.notna(r["lift_ex_recovery"]) else "  n/a"
+            eps = f"{int(r['episodes_followed_by_recession'])}/{int(r['episodes'])}"
+            print(f"  {r['indicator'][:35]:<36}{r['kind']:<12}{lift:>7}{ex:>8}{eps:>10}   {r['verdict']}")
 
     print("\nCurrent readings:")
     for _, row in signals.iterrows():
