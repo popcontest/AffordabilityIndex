@@ -1035,17 +1035,26 @@ def evaluate_signal_skill(
         def score(mask: pd.Series) -> tuple:
             sub_fire, sub_y = fired[mask].astype(bool), target[mask].astype(bool)
             if not len(sub_y) or not sub_y.any():
-                return (len(sub_y), np.nan, np.nan, np.nan, np.nan)
+                return (len(sub_y), np.nan, np.nan, np.nan, np.nan, np.nan)
             base = float(sub_y.mean())
             tp = int((sub_fire & sub_y).sum())
             fp = int((sub_fire & ~sub_y).sum())
             precision = tp / (tp + fp) if (tp + fp) else np.nan
             recall = tp / int(sub_y.sum())
             lift = precision / base if base and not np.isnan(precision) else np.nan
-            return (len(sub_y), base * 100, precision * 100, recall * 100, lift)
+            # Share of the available improvement actually captured, from 0 (no
+            # better than the base rate) to 1 (perfect). Lift alone is not
+            # comparable between indicators whose samples start in different
+            # decades: the ceiling on lift is 1/base_rate, and the base rate
+            # falls from 27.5% before 1960 to 5.9% after 2008. That caps lift at
+            # 3.6x for a series measured in the earlier era while allowing 17x
+            # in the later one, so a 1990-onward indicator can post a bigger
+            # lift than the yield curve while capturing less of what was there.
+            skill = (precision - base) / (1 - base) if base < 1 and not np.isnan(precision) else np.nan
+            return (len(sub_y), base * 100, precision * 100, recall * 100, lift, skill)
 
-        n, base, prec, rec, lift = score(usable)
-        _, _, _, _, lift_ex = score(usable & (since_end > 12))
+        n, base, prec, rec, lift, skill = score(usable)
+        _, _, _, _, lift_ex, _ = score(usable & (since_end > 12))
 
         # Distinct firing episodes, and how many were followed by a recession.
         # This is the honest denominator. A signal that stays on for a year
@@ -1068,6 +1077,8 @@ def evaluate_signal_skill(
                 "recall_pct": _r(rec),
                 "lift": _r(lift),
                 "lift_ex_recovery": _r(lift_ex),
+                "skill_captured": _r(skill, 3),
+                "max_possible_lift": _r(1 / (base / 100) if base else np.nan),
                 "episodes": episodes,
                 "episodes_followed_by_recession": hits,
                 "verdict": _verdict(lift),
@@ -1698,6 +1709,17 @@ def build_readme(provenance: pd.DataFrame, splice_note: str, spx_source: str, wi
         ("READING lift", "precision divided by the unconditional base rate. 1.0x means the signal "
                          "carries no information: recessions follow it exactly as often as they follow "
                          "any random month. Below 1.0x it fires LESS often before recessions than chance."),
+        ("READING skill_captured", "Share of the available improvement the signal captures, 0 to 1. "
+                                   "Prefer this to lift when comparing indicators whose samples start in "
+                                   "different decades. Lift is capped at 1/base_rate, and the base rate "
+                                   "is not stable: 'recession begins within 12 months' runs at 27.5% of "
+                                   "months in 1928-1959, 21.6% in 1960-1984, 13.8% in 1985-2007 and 5.9% "
+                                   "in 2008-2026. A series measured only in the modern era therefore has "
+                                   "roughly triple the headroom on lift that a long-history series has."),
+        ("CAVEAT Great Moderation", "The US spent 24.2% of months in recession before 1960 and 5.8% in "
+                                    "1985-2007. Pooling the whole sample averages across genuinely "
+                                    "different regimes, and a signal that worked in the volatile "
+                                    "post-war decades is not thereby shown to work now."),
         ("READING episodes", "Consecutive firing months are ONE event, not many. A signal that stays "
                              "on for a year contributes twelve correlated months to precision but only "
                              "one independent test. Where lift and the episode ratio disagree, believe "
