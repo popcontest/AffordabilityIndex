@@ -83,3 +83,4 @@ apps/
 # macro_recession_model.py generated charts (macro_trend_analysis.xlsx covered by *.xlsx)
 chart1_macro_timeseries.png
 chart2_correlation.png
+chart3_signal_skill.png

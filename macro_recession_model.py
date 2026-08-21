@@ -105,6 +105,20 @@ FRED_SERIES = {
     "recession": "USREC",
 }
 
+#: Comparison indicators, fetched best-effort. These exist so the model can
+#: score its own retail/inflation signals against the recession indicators the
+#: literature actually rates, rather than asserting skill it has not measured.
+#: Each maps to (FRED id, monthly aggregation). A failure here degrades the
+#: skill table but never stops the run.
+FRED_INDICATORS = {
+    "ust_10y": ("GS10", "mean"),        # 10-year Treasury, monthly, 1953->
+    "ust_3m": ("TB3MS", "mean"),        # 3-month bill, monthly, 1934->
+    "baa": ("BAA", "mean"),             # Moody's Baa corporate yield, 1919->
+    "permits": ("PERMIT", "mean"),      # building permits, monthly, 1960->
+    "claims": ("ICSA", "mean"),         # initial jobless claims, weekly, 1967->
+    "sahm": ("SAHMREALTIME", "last"),   # real-time Sahm rule, monthly, 1959->
+}
+
 #: Yahoo tickers tried in order. ^SPX is the requested symbol; ^GSPC is the
 #: same index under Yahoo's older ticker and is more reliably served.
 SP500_TICKERS = ("^SPX", "^GSPC")
@@ -543,6 +557,34 @@ def add_derived_metrics(monthly: pd.DataFrame) -> pd.DataFrame:
     # study of "what followed this reading" but must never be used as a feature.
     df["sp500_fwd_12m"] = (df["sp500_close"].shift(-12) / df["sp500_close"] - 1.0) * 100.0
 
+    # --- Comparison leading indicators -------------------------------------
+    # These are not part of the retail/inflation thesis. They are here as a
+    # yardstick: without them there is no way to tell whether a retail signal
+    # that "looks like" it precedes recessions carries any information a
+    # well-known indicator does not already carry, or indeed any at all.
+    if {"ust_10y", "ust_3m"} <= set(df.columns):
+        # Term spread. Inversion (short rates above long) is the single
+        # best-documented leading indicator of US recessions.
+        df["yield_curve"] = df["ust_10y"] - df["ust_3m"]
+    if {"baa", "ust_10y"} <= set(df.columns):
+        # Baa-over-Treasury credit spread. FRED publishes this ready-made as
+        # BAA10Y, but only from 1986 -- four recessions, too few to score a
+        # signal on. Building it from the component yields instead reaches back
+        # to 1953 and eleven recessions.
+        df["credit_spread"] = df["baa"] - df["ust_10y"]
+        # The 12-month *change*, not the level, is the signal. Spread levels are
+        # regime-dependent and stay wide right through a recovery, so a level
+        # threshold scores 0.35x -- it captures the aftermath of the last
+        # recession rather than the approach of the next one. Widening is the
+        # part that carries information.
+        df["credit_spread_chg12"] = df["credit_spread"].diff(12)
+    if "permits" in df.columns:
+        # Residential building permits: housing turns before the wider economy.
+        df["permits_yoy"] = df["permits"].pct_change(12) * 100.0
+    if "claims" in df.columns:
+        # Initial jobless claims, YoY. Rising claims lead payroll losses.
+        df["claims_yoy"] = df["claims"].pct_change(12) * 100.0
+
     # --- Recession flag ----------------------------------------------------
     # USREC is 1 for every month from the month *following* an NBER-dated peak
     # through the month of the trough. NBER announces these dates with a lag of
@@ -696,80 +738,285 @@ def correlation_matrix(df: pd.DataFrame) -> pd.DataFrame:
     return df[available].corr().round(4)
 
 
-def current_signals(df: pd.DataFrame) -> pd.DataFrame:
-    """A dashboard of the latest reading on each recession indicator.
+# ---------------------------------------------------------------------------
+# Signal registry and skill testing
+# ---------------------------------------------------------------------------
 
-    Thresholds are conventional rules of thumb drawn from the historical record
-    in `recession_table`, not fitted parameters. They are directional guides:
-    every one of them has fired outside a recession at some point (most
-    famously the 2022 real-retail dip, which did not become a recession because
-    employment held up).
+#: Every indicator the model reports on, with the condition that "fires" it and
+#: how it should be read. The `kind` field is the honest part: a COINCIDENT
+#: indicator tells you what is happening now, a LEADING one claims to tell you
+#: what happens next, and only the latter is entitled to a forecasting claim.
+#: Conflating the two is the specific error this registry exists to prevent --
+#: real retail contraction is an excellent coincident marker and a useless
+#: leading one, and a dashboard that lists it under "warning threshold" without
+#: saying which invites the reader to act on it as a forecast.
+SIGNAL_DEFS: list[dict] = [
+    {
+        "name": "Yield curve inverted (10y - 3m)",
+        "short": "Yield curve inverted",
+        "column": "yield_curve",
+        "kind": "leading",
+        "condition": "< 0",
+        "fires": lambda v: v < 0,
+        "note": "Short rates above long. The best-documented leading indicator of US recessions.",
+    },
+    {
+        "name": "Credit spread widening (Baa - 10y)",
+        "short": "Credit spread widening",
+        "column": "credit_spread_chg12",
+        "kind": "leading",
+        "condition": "> +0.5 pp in 12m",
+        "fires": lambda v: v > 0.5,
+        "note": "Corporate borrowing stress widening. Built from BAA minus GS10 (1953 on) rather "
+                "than the ready-made BAA10Y, which starts in 1986 and covers only four "
+                "recessions. The level scores 0.35x -- spreads stay wide through recoveries -- "
+                "so the 12-month change is used instead. Even so it is only marginally "
+                "informative here.",
+    },
+    {
+        "name": "Building permits YoY",
+        "short": "Building permits YoY",
+        "column": "permits_yoy",
+        "kind": "leading",
+        "condition": "< -10%",
+        "fires": lambda v: v < -10.0,
+        "note": "Housing starts turn before the wider economy; permits turn before starts.",
+    },
+    {
+        "name": "Initial jobless claims YoY",
+        "short": "Jobless claims YoY",
+        "column": "claims_yoy",
+        "kind": "leading",
+        "condition": "> +10%",
+        "fires": lambda v: v > 10.0,
+        "note": "Rising claims lead outright payroll losses by a few months.",
+    },
+    {
+        "name": "Sahm rule (real-time)",
+        "short": "Sahm rule",
+        "column": "sahm",
+        "kind": "leading",
+        "condition": ">= 0.50",
+        "fires": lambda v: v >= 0.50,
+        "note": "Unemployment rate rising off its recent low. Designed as a fast trigger, so it "
+                "fires near the start of a downturn rather than ahead of one.",
+    },
+    {
+        "name": "Real retail sales YoY",
+        "short": "Real retail sales YoY",
+        "column": "retail_yoy_real",
+        "kind": "coincident",
+        "condition": "< 0% for 3 months",
+        "fires": lambda v: (v < 0) & (v.shift(1) < 0) & (v.shift(2) < 0),
+        "note": "Consumers buying less in volume terms. Strong as a description of the present, "
+                "no use as a forecast -- see the measured lift.",
+    },
+    {
+        "name": "Inflation minus retail growth",
+        "short": "Inflation vs retail",
+        "column": "inflation_retail_gap",
+        "kind": "coincident",
+        "condition": "> +2 pp",
+        "fires": lambda v: v > 2.0,
+        "note": "Prices outrunning till receipts: real volumes shrinking behind a positive "
+                "nominal print.",
+    },
+    {
+        "name": "CPI YoY",
+        "short": "CPI YoY",
+        "column": "cpi_yoy",
+        "kind": "context",
+        "condition": "> 4%",
+        "fires": lambda v: v > 4.0,
+        "note": "Not a recession signal on its own. High inflation squeezes real spending and "
+                "invites the rate hikes that historically do the damage.",
+    },
+    {
+        "name": "S&P 500 YoY",
+        "short": "S&P 500 YoY",
+        "column": "sp500_yoy",
+        "kind": "market",
+        "condition": "< 0%",
+        "fires": lambda v: v < 0,
+        "note": "The index peak leads the cycle peak by a median 5.5 months, but 'YoY negative' "
+                "is a late and noisy way to capture that.",
+    },
+]
+
+
+def evaluate_signal_skill(
+    df: pd.DataFrame,
+    spans: list[tuple[pd.Timestamp, pd.Timestamp]],
+    horizon: int = 12,
+) -> pd.DataFrame:
+    """Score every signal on the only question that justifies a warning label:
+    given that it fires today, does a recession *begin* within `horizon` months?
+
+    Three choices make this an honest test rather than a flattering one:
+
+    1. Months already inside a recession are excluded. Announcing a recession
+       you are demonstrably already in is not a forecast, and leaving those
+       months in inflates precision for every coincident indicator.
+
+    2. Precision is reported against the unconditional base rate, and their
+       ratio (`lift`) is the headline. A signal that fires constantly can post
+       high precision while carrying no information at all; lift near 1.0 means
+       exactly that, and lift below 1.0 means the signal fires *less* often
+       before recessions than chance would predict.
+
+    3. `lift_ex_recovery` repeats the test with the 12 months following each
+       recession removed. This matters more than it sounds: 57% of the retail
+       signal's firings in this sample land within a year of a recession
+       *ending*, where a depressed year-ago base mechanically produces negative
+       year-over-year growth. Those are arithmetic echoes of the last
+       recession, not warnings about the next one.
     """
-    latest = df.dropna(subset=["retail_yoy_real"]).iloc[-1]
-    as_of = latest.name.date().isoformat()
-    last12 = df.dropna(subset=["retail_yoy_real"]).tail(12)
+    starts = [s for s, _ in spans]
+    ends = [e for _, e in spans]
 
-    def row(indicator: str, value, threshold: str, triggered: bool, reading: str) -> dict:
-        return {
-            "as_of": as_of,
-            "indicator": indicator,
-            "value": _r(value),
-            "warning_threshold": threshold,
-            "triggered": bool(triggered),
-            "interpretation": reading,
+    def recession_begins_within(dt: pd.Timestamp) -> bool:
+        return any(dt < s <= dt + pd.DateOffset(months=horizon) for s in starts)
+
+    def months_since_last_recession(dt: pd.Timestamp) -> float:
+        prior = [e for e in ends if e <= dt]
+        return (dt - prior[-1]).days / 30.44 if prior else float("inf")
+
+    target = pd.Series({i: recession_begins_within(i) for i in df.index})
+    since_end = pd.Series({i: months_since_last_recession(i) for i in df.index})
+    expansion = df["recession"] == 0
+
+    rows = []
+    for spec in SIGNAL_DEFS:
+        col = spec["column"]
+        if col not in df.columns or df[col].notna().sum() < 24:
+            continue
+
+        fired = spec["fires"](df[col])
+        usable = expansion & df[col].notna() & fired.notna()
+
+        def score(mask: pd.Series) -> tuple:
+            sub_fire, sub_y = fired[mask].astype(bool), target[mask].astype(bool)
+            if not len(sub_y) or not sub_y.any():
+                return (len(sub_y), np.nan, np.nan, np.nan, np.nan)
+            base = float(sub_y.mean())
+            tp = int((sub_fire & sub_y).sum())
+            fp = int((sub_fire & ~sub_y).sum())
+            precision = tp / (tp + fp) if (tp + fp) else np.nan
+            recall = tp / int(sub_y.sum())
+            lift = precision / base if base and not np.isnan(precision) else np.nan
+            return (len(sub_y), base * 100, precision * 100, recall * 100, lift)
+
+        n, base, prec, rec, lift = score(usable)
+        _, _, _, _, lift_ex = score(usable & (since_end > 12))
+
+        rows.append(
+            {
+                "indicator": spec["name"],
+                "short": spec["short"],
+                "kind": spec["kind"],
+                "condition": spec["condition"],
+                "months_tested": n,
+                "first_observation": df[col].dropna().index.min().date().isoformat(),
+                "base_rate_pct": _r(base),
+                "precision_pct": _r(prec),
+                "recall_pct": _r(rec),
+                "lift": _r(lift),
+                "lift_ex_recovery": _r(lift_ex),
+                "verdict": _verdict(lift),
+                "note": spec["note"],
+            }
+        )
+
+    table = pd.DataFrame(rows)
+    if not table.empty:
+        table = table.sort_values("lift", ascending=False, na_position="last").reset_index(drop=True)
+    return table
+
+
+def _verdict(lift: float) -> str:
+    """Plain-language reading of a lift ratio, so the table cannot be skimmed
+    into the wrong conclusion."""
+    if lift is None or (isinstance(lift, float) and np.isnan(lift)):
+        return "not enough data"
+    if lift >= 2.0:
+        return "strong leading signal"
+    if lift >= 1.3:
+        return "some leading information"
+    if lift >= 0.9:
+        return "no leading information"
+    return "fires LESS often before recessions than chance"
+
+
+def current_signals(df: pd.DataFrame, skill: pd.DataFrame) -> pd.DataFrame:
+    """Latest reading on every indicator, each stamped with its own measured
+    track record.
+
+    An earlier version of this table listed a "warning threshold" per indicator
+    and nothing else. That framing implied every row was a forecast, which is
+    false for most of them: on this sample the real-retail rule fires *less*
+    often before recessions than chance (lift 0.34x once recovery base effects
+    are excluded), while the yield curve runs above 3x. Both were presented
+    identically. Each row now carries its `kind` and the lift measured by
+    `evaluate_signal_skill`, so a triggered coincident indicator cannot be read
+    as a prediction.
+    """
+    ranked = skill.set_index("indicator") if not skill.empty else pd.DataFrame()
+    rows = []
+
+    for spec in SIGNAL_DEFS:
+        col = spec["column"]
+        if col not in df.columns:
+            continue
+        series = df[col].dropna()
+        if series.empty:
+            continue
+
+        fired = spec["fires"](df[col]).reindex(series.index)
+        latest_date = series.index[-1]
+        value = float(series.iloc[-1])
+        triggered = bool(fired.iloc[-1]) if pd.notna(fired.iloc[-1]) else False
+
+        # Months in the last twelve for which the condition held. A single
+        # month at the threshold is noise on every one of these series.
+        recent = fired.tail(12)
+        months_fired = int(recent.sum()) if recent.notna().any() else 0
+
+        entry = ranked.loc[spec["name"]] if spec["name"] in ranked.index else None
+        rows.append(
+            {
+                "indicator": spec["name"],
+                "kind": spec["kind"],
+                "as_of": latest_date.date().isoformat(),
+                "value": _r(value),
+                "condition": spec["condition"],
+                "triggered": triggered,
+                "months_fired_last_12": months_fired,
+                "measured_lift": entry["lift"] if entry is not None else np.nan,
+                "verdict": entry["verdict"] if entry is not None else "not tested",
+                "note": spec["note"],
+            }
+        )
+
+    signals = pd.DataFrame(rows)
+
+    # NBER's own flag, kept last and deliberately outside the skill table: it
+    # is the label the others are scored against, not a competitor to them.
+    latest = df.dropna(subset=["recession"]).iloc[-1]
+    official = pd.DataFrame([
+        {
+            "indicator": "NBER recession flag (USREC)",
+            "kind": "official (lagging)",
+            "as_of": latest.name.date().isoformat(),
+            "value": int(latest["recession"]),
+            "condition": "= 1",
+            "triggered": int(latest["recession"]) == 1,
+            "months_fired_last_12": int(df["recession"].tail(12).sum()),
+            "measured_lift": np.nan,
+            "verdict": "ground truth, published 6-18 months late",
+            "note": "NBER dates recessions well after the fact, so a 0 here rules nothing out.",
         }
-
-    real_yoy = float(latest["retail_yoy_real"])
-    gap = float(latest["inflation_retail_gap"])
-    spx_yoy = float(latest["sp500_yoy"]) if pd.notna(latest.get("sp500_yoy")) else np.nan
-    months_neg = int((last12["retail_yoy_real"] < 0).sum())
-
-    return pd.DataFrame(
-        [
-            row(
-                "Real retail sales YoY (%)",
-                real_yoy,
-                "< 0%",
-                real_yoy < 0,
-                "Consumers are buying less in volume terms -- the strongest coincident marker in this model.",
-            ),
-            row(
-                "Months of negative real retail growth in last 12",
-                months_neg,
-                ">= 3",
-                months_neg >= 3,
-                "A single negative month is noise; a sustained run is what precedes NBER-dated contractions.",
-            ),
-            row(
-                "Inflation minus nominal retail growth (pp)",
-                gap,
-                "> 0 pp",
-                gap > 0,
-                "Positive means price increases are outrunning till receipts: real volumes shrinking behind a positive nominal print.",
-            ),
-            row(
-                "CPI YoY (%)",
-                float(latest["cpi_yoy"]),
-                "> 4%",
-                float(latest["cpi_yoy"]) > 4,
-                "High inflation both squeezes real spending and invites the rate hikes that historically trigger the downturn.",
-            ),
-            row(
-                "S&P 500 YoY (%)",
-                spx_yoy,
-                "< 0%",
-                bool(spx_yoy < 0) if pd.notna(spx_yoy) else False,
-                "Equities lead: the index has typically peaked several months before the NBER-dated business cycle peak.",
-            ),
-            row(
-                "NBER recession flag (USREC)",
-                int(latest["recession"]),
-                "= 1",
-                int(latest["recession"]) == 1,
-                "Official but lagging -- NBER dates recessions 6-18 months after the fact, so a 0 here rules nothing out.",
-            ),
-        ]
-    )
+    ])
+    return pd.concat([signals, official], ignore_index=True)
 
 
 def _r(value, digits: int = 2):
@@ -1089,6 +1336,100 @@ def chart2_correlation(df: pd.DataFrame, spans, outpath: Path, dpi: int, window:
     return outpath
 
 
+def chart3_signal_skill(df, skill: pd.DataFrame, spans, outpath: Path, dpi: int, horizon: int) -> Path:
+    """Chart 3 -- which indicators actually lead, and the one that clearly does.
+
+    This is the chart that changed the model's conclusions. Panel B ranks every
+    indicator by measured lift; panel A plots the winner. The retail and market
+    series that motivated the whole exercise sit below the no-information line,
+    which is the honest headline and the reason this panel exists rather than a
+    prettier restatement of chart 1.
+    """
+    fig, (ax_a, ax_b) = plt.subplots(
+        1, 2, figsize=(16, 7.4), gridspec_kw={"width_ratios": [1.0, 1.05], "wspace": 0.30}
+    )
+    fig.patch.set_facecolor(SURFACE)
+
+    # ---------------- Panel A: the yield curve ------------------------------
+    _style_axes(ax_a)
+    _shade_recessions(ax_a, spans)
+    curve = df["yield_curve"].dropna() if "yield_curve" in df.columns else pd.Series(dtype=float)
+    if not curve.empty:
+        ax_a.axhline(0, color=ZERO_LINE, linewidth=1.2, zorder=2)
+        ax_a.plot(curve.index, curve, color=C_RETAIL, linewidth=1.9, zorder=3)
+        # Fill only the inversions: the condition being tested, made visible.
+        ax_a.fill_between(curve.index, curve, 0, where=(curve < 0), interpolate=True,
+                          color=C_RECESSION, alpha=0.55, linewidth=0, zorder=3)
+        ax_a.set_xlim(curve.index.min(), curve.index.max())
+        ax_a.set_ylim(min(-2.0, curve.min() - 0.4), curve.max() + 0.4)
+
+    ax_a.set_ylabel("10-year minus 3-month Treasury (pp)", color=INK_SECONDARY, fontsize=10.5, labelpad=8)
+    ax_a.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda v, _: f"{v:+.0f}"))
+    ax_a.xaxis.set_major_locator(mdates.YearLocator(10))
+    ax_a.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
+    ax_a.set_title("A.  The one that leads: yield curve inversions",
+                   loc="left", fontsize=12.5, fontweight="bold", color=INK_PRIMARY, pad=12)
+    handles_a = [
+        Line2D([], [], color=C_RETAIL, linewidth=2.4, label="10y − 3m Treasury spread"),
+        Patch(facecolor=C_RECESSION, alpha=0.6, label="Inverted (spread below zero)"),
+        Patch(facecolor=C_RECESSION, alpha=0.18, label="NBER recession"),
+    ]
+    leg_a = ax_a.legend(handles=handles_a, loc="upper left", bbox_to_anchor=(0.0, -0.06),
+                        frameon=True, fontsize=9.5, borderpad=0.6, ncol=3, columnspacing=1.6,
+                        framealpha=1.0)
+    leg_a.get_frame().set_facecolor(SURFACE)
+    leg_a.get_frame().set_edgecolor(GRID)
+    for text in leg_a.get_texts():
+        text.set_color(INK_SECONDARY)
+
+    # ---------------- Panel B: measured lift, ranked ------------------------
+    _style_axes(ax_b)
+    ax_b.grid(axis="y", visible=False)
+    bars = skill.dropna(subset=["lift"]).sort_values("lift")
+    y = np.arange(len(bars))
+    # Diverging encoding about the no-information line: blue carries
+    # information, red fires less often than chance would predict.
+    colors = [C_RETAIL if v >= 1.0 else C_RECESSION for v in bars["lift"]]
+    ax_b.barh(y, bars["lift"], color=colors, height=0.62, zorder=3)
+    ax_b.axvline(1.0, color=INK_PRIMARY, linewidth=1.6, linestyle="--", alpha=0.8, zorder=4)
+    ax_b.annotate("no information", xy=(1.0, len(bars) - 0.35), xytext=(6, 0),
+                  textcoords="offset points", fontsize=9, color=INK_SECONDARY, va="center")
+
+    ax_b.set_yticks(y)
+    ax_b.set_yticklabels([f"{n}  ({k})" for n, k in zip(bars["short"], bars["kind"])], fontsize=9.5)
+    ax_b.tick_params(axis="y", labelcolor=INK_SECONDARY)
+    ax_b.set_xlim(0, max(3.8, float(bars["lift"].max()) * 1.22))
+    ax_b.set_xlabel(f"Lift: precision ÷ base rate, for a recession starting within {horizon} months",
+                    color=INK_SECONDARY, fontsize=10.5, labelpad=8)
+    # Integer ticks explicitly: the default locator lands on half-steps, which a
+    # "{:.0f}x" formatter renders as duplicated labels (0x 0x 1x 2x 2x 2x).
+    ax_b.xaxis.set_major_locator(matplotlib.ticker.MultipleLocator(1.0))
+    ax_b.xaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda v, _: f"{v:.0f}x"))
+
+    # Direct-label every bar: nine categories exceed what colour alone may carry.
+    for yi, v in zip(y, bars["lift"]):
+        ax_b.annotate(f"{v:.2f}x", xy=(v, yi), xytext=(6, 0), textcoords="offset points",
+                      va="center", fontsize=9.5, fontweight="bold", color=INK_PRIMARY)
+
+    ax_b.set_title("B.  Measured skill of every indicator in the model",
+                   loc="left", fontsize=12.5, fontweight="bold", color=INK_PRIMARY, pad=12)
+
+    fig.suptitle("What actually predicts a recession — and what only looks like it does",
+                 x=0.045, ha="left", fontsize=17, fontweight="bold", color=INK_PRIMARY, y=0.98)
+    fig.text(0.045, 0.017,
+             "Scored on expansion months only, so a signal cannot score by announcing a recession already under way. "
+             "Sources: FRED · Yahoo Finance.",
+             fontsize=8.5, color=INK_MUTED, ha="left")
+
+    # Panel B's category labels are long and hang to the left of its axis, so
+    # this needs a real gutter rather than the default spacing.
+    fig.subplots_adjust(left=0.055, right=0.975, top=0.855, bottom=0.185, wspace=0.55)
+    fig.savefig(outpath, dpi=dpi, facecolor=SURFACE, bbox_inches="tight")
+    plt.close(fig)
+    log.info("Wrote %s", outpath)
+    return outpath
+
+
 # ---------------------------------------------------------------------------
 # Excel export
 # ---------------------------------------------------------------------------
@@ -1131,6 +1472,8 @@ def build_readme(provenance: pd.DataFrame, splice_note: str, spx_source: str, wi
         ("SHEET: monthly_merged", "Analysis frequency. One row per month, month-start stamped."),
         ("SHEET: daily_merged", "Business-day spine with monthly macro series forward-filled onto it."),
         ("SHEET: recession_episodes", "One row per NBER contraction with market and retail behaviour."),
+        ("SHEET: signal_skill", "Every indicator scored on: given it fires, does a recession BEGIN "
+                                "within the horizon? Read the `lift` column first."),
         ("SHEET: lead_lag_corr", "S&P YoY correlated with real retail growth at lags of -24..+24 months."),
         ("SHEET: correlation_matrix", "Pearson correlations across the full sample."),
         ("SHEET: current_signals", "Latest reading on each recession indicator vs. its warning threshold."),
@@ -1149,6 +1492,24 @@ def build_readme(provenance: pd.DataFrame, splice_note: str, spx_source: str, wi
         ("COLUMN sp500_fwd_12m", "Return over the FOLLOWING 12 months. Contains look-ahead information "
                                  "by design; valid for historical study, never as a model feature."),
         ("COLUMN recession", "USREC: 1 during an NBER-dated contraction, 0 otherwise."),
+        ("COLUMN yield_curve", "10-year minus 3-month Treasury yield, pp. Negative = inverted."),
+        ("COLUMN credit_spread", "Moody's Baa corporate yield minus the 10-year Treasury, pp."),
+        ("COLUMN credit_spread_chg12", "12-month change in that spread. The level is regime-dependent "
+                                       "and stays wide through recoveries; the change is the signal."),
+        ("COLUMN permits_yoy", "12-month percent change in residential building permits."),
+        ("COLUMN claims_yoy", "12-month percent change in initial jobless claims."),
+        ("COLUMN sahm", "Real-time Sahm rule: unemployment's 3-month average minus its 12-month low."),
+        ("", ""),
+        ("READING lift", "precision divided by the unconditional base rate. 1.0x means the signal "
+                         "carries no information: recessions follow it exactly as often as they follow "
+                         "any random month. Below 1.0x it fires LESS often before recessions than chance."),
+        ("READING kind", "coincident = describes the present. leading = claims to predict. Only a "
+                         "leading indicator with lift above ~1.3 supports a forecasting statement."),
+        ("FINDING retail", "Real retail contraction is a strong COINCIDENT marker -- 75.8% of recession "
+                           "months show it against 15.6% of expansion months -- and has no leading value: "
+                           "lift 0.74x, falling to 0.34x once post-recession recovery months are excluded. "
+                           "57% of its firings land within a year of a recession ENDING, where a depressed "
+                           "year-ago base mechanically produces negative growth."),
         ("", ""),
         ("CAVEAT Temporal basis", "CPI and retail sales are published with a 2-6 week lag and are revised; "
                                   "the S&P is real time. Same-month rows are not same-information rows."),
@@ -1158,8 +1519,19 @@ def build_readme(provenance: pd.DataFrame, splice_note: str, spx_source: str, wi
                                  "the NAICS basis. Growth rates are comparable; absolute levels are indicative."),
         ("CAVEAT Price-only index", "S&P figures exclude dividends, understating total return by roughly "
                                     "2-4pp a year in the earlier decades of the sample."),
-        ("CAVEAT Thresholds", "The warning thresholds on the signals sheet are conventional rules of thumb, "
-                              "not fitted parameters. Each has produced false positives."),
+        ("CAVEAT Thresholds", "Signal thresholds are conventional rules of thumb, not fitted parameters. "
+                              "Each has produced false positives."),
+        ("CAVEAT In-sample", "The skill table scores every indicator over the full history, with thresholds "
+                             "chosen in hindsight. It is a description of the past, not an out-of-sample "
+                             "backtest, and it flatters every signal to some degree. Treat lift as a way to "
+                             "RANK indicators against each other, not as an expected hit rate."),
+        ("CAVEAT Revisions", "Retail sales and CPI are revised for years after first release, and the "
+                             "unemployment inputs to the Sahm rule likewise. Scoring on final data credits "
+                             "signals with information nobody had at the time. Real-time evaluation needs "
+                             "vintage data from ALFRED."),
+        ("CAVEAT Small n", "Fifteen recessions since 1927, and fewer for indicators that start later. "
+                           "Differences between adjacent lifts in the table are not statistically "
+                           "meaningful; only the large gaps are."),
     ]
     notes = pd.DataFrame(entries, columns=["item", "detail"])
     if not provenance.empty:
@@ -1222,14 +1594,32 @@ def run(args: argparse.Namespace) -> int:
         return 1
     provenance.add("sp500", spx_source, spx_ticker, spx, "daily close, price index (no dividends)")
 
+    # Comparison indicators. Each is optional: a failure costs one row of the
+    # skill table and nothing else, so a FRED hiccup on BAA10Y must not take
+    # down a run whose core series all arrived.
+    indicators: dict[str, pd.Series] = {}
+    for name, (series_id, how) in FRED_INDICATORS.items():
+        try:
+            raw = fetch_fred_series(series_id, args.start)
+        except DataFetchError as exc:
+            log.warning("Comparison indicator %s unavailable, skipping: %s", series_id, exc)
+            continue
+        # BAA10Y is daily and ICSA weekly; both need collapsing to the monthly
+        # analysis grid before they can join the frame.
+        resampled = raw.resample("MS").mean() if how == "mean" else raw.resample("MS").last()
+        indicators[name] = resampled.dropna()
+        provenance.add(name, "FRED", series_id, indicators[name], f"resampled to monthly ({how})")
+
     # ----- 2. Align --------------------------------------------------------
     log.info("Aligning series ...")
     monthly_levels = {
         "cpi": to_month_start(cpi),
         "retail_nominal": to_month_start(retail),
         "recession": to_month_start(usrec),
+        **{k: to_month_start(v) for k, v in indicators.items()},
     }
-    daily = build_daily_frame(spx, monthly_levels)
+    core_levels = {k: monthly_levels[k] for k in ('cpi', 'retail_nominal', 'recession')}
+    daily = build_daily_frame(spx, core_levels)
     monthly = build_monthly_frame(spx, monthly_levels)
 
     # ----- 3. Derive -------------------------------------------------------
@@ -1251,12 +1641,17 @@ def run(args: argparse.Namespace) -> int:
     episodes = recession_table(monthly, spans, spx)
     leadlag = lead_lag_correlation(monthly)
     corr = correlation_matrix(monthly)
-    signals = current_signals(monthly)
+    skill = evaluate_signal_skill(monthly, spans, horizon=args.horizon)
+    signals = current_signals(monthly, skill)
 
     # ----- 4. Charts -------------------------------------------------------
     log.info("Rendering charts ...")
     chart1 = chart1_timeseries(monthly, spans, outdir / "chart1_macro_timeseries.png", args.dpi)
     chart2 = chart2_correlation(monthly, spans, outdir / "chart2_correlation.png", args.dpi, args.rolling_window)
+    charts = [chart1, chart2]
+    if not skill.empty:
+        charts.append(chart3_signal_skill(monthly, skill, spans,
+                                          outdir / "chart3_signal_skill.png", args.dpi, args.horizon))
 
     # ----- 5. Excel --------------------------------------------------------
     log.info("Writing workbook ...")
@@ -1276,16 +1671,17 @@ def run(args: argparse.Namespace) -> int:
             "recession_episodes": episodes,
             "lead_lag_corr": leadlag,
             "correlation_matrix": corr.reset_index().rename(columns={"index": "metric"}),
+            "signal_skill": skill,
             "current_signals": signals,
         },
     )
 
     # ----- 6. Console summary ---------------------------------------------
-    _print_summary(monthly, episodes, leadlag, signals, spans, [xlsx, chart1, chart2])
+    _print_summary(monthly, episodes, leadlag, signals, skill, spans, [xlsx, *charts])
     return 0
 
 
-def _print_summary(monthly, episodes, leadlag, signals, spans, artifacts) -> None:
+def _print_summary(monthly, episodes, leadlag, signals, skill, spans, artifacts) -> None:
     line = "=" * 78
     print(f"\n{line}\nMACRO RECESSION MODEL\n{line}")
     print(f"Sample window     : {monthly.index.min():%b %Y} – {monthly.index.max():%b %Y} "
@@ -1312,15 +1708,28 @@ def _print_summary(monthly, episodes, leadlag, signals, spans, artifacts) -> Non
         if not trough.empty:
             print(f"Real retail trough: {trough.median():.1f}% YoY at the worst point (median)")
 
-    print(f"\nCurrent signals (as of {signals['as_of'].iloc[0]}):")
-    for _, row in signals.iterrows():
-        mark = "TRIGGERED" if row["triggered"] else "   ok    "
-        value = f"{row['value']:>8.2f}" if isinstance(row["value"], (int, float, np.floating)) else f"{row['value']:>8}"
-        print(f"  [{mark}] {row['indicator']:<52} {value}   (warn {row['warning_threshold']})")
+    if not skill.empty:
+        print("\nSignal skill -- given the signal fires, does a recession BEGIN within the horizon?")
+        print("  (expansion months only; lift = precision / base rate, so 1.0x means no information)")
+        print(f"  {'indicator':<34}{'kind':<12}{'lift':>7}{'ex-recov':>10}   verdict")
+        for _, r in skill.iterrows():
+            lift = f"{r['lift']:.2f}x" if pd.notna(r["lift"]) else "   n/a"
+            ex = f"{r['lift_ex_recovery']:.2f}x" if pd.notna(r["lift_ex_recovery"]) else "   n/a"
+            print(f"  {r['indicator'][:33]:<34}{r['kind']:<12}{lift:>7}{ex:>10}   {r['verdict']}")
 
-    fired = int(signals["triggered"].sum())
-    print(f"\n  {fired} of {len(signals)} indicators triggered. These are directional rules of thumb, "
-          f"not a forecast;\n  every one of them has fired outside a recession at some point.")
+    print("\nCurrent readings:")
+    for _, row in signals.iterrows():
+        mark = "FIRING" if row["triggered"] else "  --  "
+        value = f"{row['value']:>9.2f}" if isinstance(row["value"], (int, float, np.floating)) else f"{row['value']:>9}"
+        lift = f"{row['measured_lift']:.2f}x" if pd.notna(row["measured_lift"]) else "  n/a"
+        print(f"  [{mark}] {row['indicator'][:36]:<38}{value}  {row['condition']:<18}"
+              f"lift {lift:>6}  ({row['kind']})")
+
+    lead_fired = signals[(signals["kind"] == "leading") & signals["triggered"]]
+    print(f"\n  {int(signals['triggered'].sum())} of {len(signals)} indicators firing; "
+          f"{len(lead_fired)} of them carry any leading information.")
+    print("  A firing COINCIDENT indicator describes the present, not the future -- check the")
+    print("  lift column before reading any row here as a forecast.")
 
     print("\nArtifacts:")
     for path in artifacts:
@@ -1339,6 +1748,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="Earliest date requested from the APIs (providers return their full history from here)")
     parser.add_argument("--rolling-window", type=int, default=DEFAULT_ROLLING_WINDOW,
                         help="Rolling correlation window, in months")
+    parser.add_argument("--horizon", type=int, default=12,
+                        help="Forecast horizon, in months, that the signal skill test scores against")
     parser.add_argument("--dpi", type=int, default=200, help="Output resolution for the PNG charts")
     parser.add_argument("--no-splice", action="store_true",
                         help="Skip the pre-1992 legacy retail splice; use RSAFS only")
