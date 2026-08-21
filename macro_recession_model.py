@@ -126,6 +126,8 @@ FRED_INDICATORS = {
     "nfci": ("NFCI", "mean"),           # Chicago Fed financial conditions, weekly, 1971->
     "m2_real": ("M2REAL", "mean"),      # real M2 money stock, 1959->
     "fed_assets": ("WALCL", "mean"),    # Fed total assets (QE/QT), weekly, 2002->
+    "lending_standards": ("DRTSCILM", "mean"),  # SLOOS: net % of banks tightening C&I, 1990->
+    "continued_claims": ("CCSA", "mean"),       # continued jobless claims, weekly, 1967->
 }
 
 #: Yahoo tickers tried in order. ^SPX is the requested symbol; ^GSPC is the
@@ -393,6 +395,49 @@ def fetch_sp500() -> tuple[pd.Series, str, str]:
         raise DataFetchError("Could not retrieve S&P 500 from any source:\n  " + "\n  ".join(failures)) from exc
 
 
+#: The 50 state unemployment-rate series, used by the optional diffusion
+#: index. FRED ids are the two-letter postal code plus "UR".
+STATE_CODES = (
+    "AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO "
+    "MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY"
+).split()
+
+
+def fetch_state_diffusion(start: str = EARLIEST_START) -> pd.Series:
+    """Share of states whose unemployment rate is rising off its own recent low.
+
+    Every other indicator in this model is a national aggregate. This one is a
+    *breadth* measure: it asks how widely weakness has spread rather than how
+    deep it is nationally, which is information no aggregate contains. It is a
+    state-level Sahm rule -- for each state, is unemployment at least 0.5pp
+    above its trailing 12-month minimum -- averaged across the states.
+
+    Measured result: it does not earn its keep. It scores 1.60x (skill 0.091,
+    5 of 14 episodes) against the yield curve's 3.99x on the same 1976-onward
+    sample. It stays behind a flag because it costs fifty extra API
+    calls for a signal the curve dominates, but it is here because a negative
+    result worth knowing is still worth being able to reproduce.
+    """
+    frames: dict[str, pd.Series] = {}
+    failed = []
+    for code in STATE_CODES:
+        try:
+            frames[code] = fetch_fred_series(f"{code}UR", start)
+        except DataFetchError:
+            failed.append(code)
+    if len(frames) < 40:
+        raise DataFetchError(
+            f"only {len(frames)}/50 state unemployment series retrieved; diffusion index unreliable"
+        )
+    if failed:
+        log.warning("State diffusion: %d states unavailable (%s)", len(failed), ", ".join(failed))
+
+    panel = pd.DataFrame(frames).sort_index()
+    above_low = panel - panel.rolling(12, min_periods=12).min()
+    diffusion = (above_low >= 0.5).sum(axis=1) / panel.notna().sum(axis=1) * 100.0
+    return diffusion.dropna()
+
+
 # ---------------------------------------------------------------------------
 # Series construction
 # ---------------------------------------------------------------------------
@@ -628,6 +673,23 @@ def add_derived_metrics(monthly: pd.DataFrame) -> pd.DataFrame:
         # Balance sheet growth: QE positive, QT negative. Read the caveat on
         # the signal before drawing any conclusion from this one.
         df["fed_assets_yoy"] = df["fed_assets"].pct_change(12) * 100.0
+
+    if "continued_claims" in df.columns:
+        # Continued claims measure people who stay unemployed, not just those
+        # newly filing. It is the weakest-looking of the labour signals until
+        # recovery months are excluded, at which point it is among the
+        # strongest -- claims stay elevated long after a recession ends, and
+        # that tail is what drags its raw score down.
+        df["continued_claims_yoy"] = df["continued_claims"].pct_change(12) * 100.0
+
+    if "yield_curve" in df.columns:
+        # The curve *un-inverting*. Conventional attention goes to the
+        # inversion, but the steepening that follows is often the more
+        # proximate warning: it happens as the Fed starts cutting, which it
+        # does when the downturn is already arriving. Scored separately below.
+        inverted = df["yield_curve"] < 0
+        recently = inverted.rolling(12, min_periods=1).max().astype(bool)
+        df["curve_uninverting"] = ((~inverted) & recently).astype(float).where(df["yield_curve"].notna())
 
     # Composite policy-tightening score, 0-3. The three components are only
     # loosely related to each other -- the curve and financial conditions
@@ -923,6 +985,53 @@ SIGNAL_DEFS: list[dict] = [
                 "recessions. Note also that the raw correlation between balance sheet growth and "
                 "the S&P is NEGATIVE (-0.42), which is endogeneity, not evidence QE hurts stocks "
                 "-- the Fed expands the balance sheet precisely when markets are falling.",
+    },
+    {
+        "name": "State unemployment diffusion",
+        "short": "State diffusion",
+        "column": "state_diffusion",
+        "kind": "leading",
+        "condition": ">= 20% of states",
+        "fires": lambda v: v >= 20.0,
+        "note": "Breadth rather than depth: the share of states with unemployment rising off its own "
+                "12-month low. Only present with --state-diffusion. Included as a documented "
+                "negative -- 1.60x against the yield curve's 3.99x on the same 1976+ sample -- "
+                "because knowing a plausible idea does not work is worth as much as another that does.",
+    },
+    {
+        "name": "Curve un-inverting after inversion",
+        "short": "Curve un-inverting",
+        "column": "curve_uninverting",
+        "kind": "leading",
+        "condition": "= 1",
+        "fires": lambda v: v > 0.5,
+        "note": "The steepening that follows an inversion, rather than the inversion itself. Scores "
+                "2.50x (2.83x ex-recovery, 5 of 9 episodes) on the full 1953 sample -- close to the "
+                "inversion's own ex-recovery figure. The Fed cuts as the downturn arrives, so the "
+                "un-inversion sits nearer the event than the inversion does.",
+    },
+    {
+        "name": "Banks tightening lending standards",
+        "short": "Bank lending standards",
+        "column": "lending_standards",
+        "kind": "leading",
+        "condition": "> 20% net",
+        "fires": lambda v: v > 20.0,
+        "note": "Senior Loan Officer Survey: net share of banks tightening commercial and industrial "
+                "credit. Arguably the transmission channel from policy to the real economy. Strong "
+                "on lift but thin on evidence -- the survey starts in 1990, is quarterly, and fires "
+                "in only a handful of distinct episodes, so weigh the episode ratio heavily here.",
+    },
+    {
+        "name": "Continued jobless claims YoY",
+        "short": "Continued claims YoY",
+        "column": "continued_claims_yoy",
+        "kind": "leading",
+        "condition": "> +10%",
+        "fires": lambda v: v > 10.0,
+        "note": "People staying unemployed rather than newly filing. Its raw lift understates it: "
+                "claims stay high through recoveries, and excluding those months roughly doubles "
+                "its measured skill.",
     },
     {
         "name": "Real retail sales YoY",
@@ -1759,10 +1868,19 @@ def build_readme(provenance: pd.DataFrame, splice_note: str, spx_source: str, wi
                              "chosen in hindsight. It is a description of the past, not an out-of-sample "
                              "backtest, and it flatters every signal to some degree. Treat lift as a way to "
                              "RANK indicators against each other, not as an expected hit rate."),
-        ("CAVEAT Revisions", "Retail sales and CPI are revised for years after first release, and the "
-                             "unemployment inputs to the Sahm rule likewise. Scoring on final data credits "
-                             "signals with information nobody had at the time. Real-time evaluation needs "
-                             "vintage data from ALFRED."),
+        ("CAVEAT Revisions", "Retail sales and CPI are revised for years after first release, so the "
+                             "skill table is computed on numbers nobody had at the time. Full real-time "
+                             "evaluation needs vintage data from ALFRED, which this model does not fetch."),
+        ("FINDING revisions", "The direction of the revision bias is NOT obvious, and one natural "
+                              "experiment here runs against the usual assumption. FRED publishes the Sahm "
+                              "rule twice: SAHMREALTIME uses only data available at the time, SAHMCURRENT "
+                              "uses revised data. Scored identically, the REAL-TIME version does BETTER "
+                              "(0.79x, 1.33x ex-recovery) than the revised one (0.61x, 0.00x ex-recovery). "
+                              "Revision made that indicator a sharper coincident detector, which fires it "
+                              "closer to the recession and therefore scores it worse as a leading signal. "
+                              "So do not assume final-data scoring flatters every indicator; for this one "
+                              "it penalised it. The caveat above remains real but its sign is untested for "
+                              "retail sales and CPI specifically."),
         ("CAVEAT Small n", "Fifteen recessions since 1927, and fewer for indicators that start later. "
                            "Differences between adjacent lifts in the table are not statistically "
                            "meaningful; only the large gaps are."),
@@ -1863,6 +1981,15 @@ def run(args: argparse.Namespace) -> int:
         resampled = raw.resample("MS").mean() if how == "mean" else raw.resample("MS").last()
         indicators[name] = resampled.dropna()
         provenance.add(name, "FRED", series_id, indicators[name], f"resampled to monthly ({how})")
+
+    if args.state_diffusion:
+        try:
+            diffusion = fetch_state_diffusion(args.start)
+            indicators["state_diffusion"] = diffusion
+            provenance.add("state_diffusion", "FRED", "<50 state UR series>", diffusion,
+                           "share of states with unemployment >= 0.5pp above its 12-month low")
+        except DataFetchError as exc:
+            log.warning("State diffusion index unavailable: %s", exc)
 
     # ----- 2. Align --------------------------------------------------------
     log.info("Aligning series ...")
@@ -2003,6 +2130,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="Earliest date requested from the APIs (providers return their full history from here)")
     parser.add_argument("--rolling-window", type=int, default=DEFAULT_ROLLING_WINDOW,
                         help="Rolling correlation window, in months")
+    parser.add_argument("--state-diffusion", action="store_true",
+                        help="Also build a 50-state unemployment diffusion index (a breadth measure "
+                             "rather than a national aggregate). Costs 50 extra FRED calls and, on "
+                             "this data, is dominated by the yield curve -- off by default")
     parser.add_argument("--smooth", type=int, default=1, metavar="N",
                         help="Trailing N-month average applied to the CPI and retail LEVELS before "
                              "any growth rate is computed. 1 disables it. Cuts month-to-month noise "
