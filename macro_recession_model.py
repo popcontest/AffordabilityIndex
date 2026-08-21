@@ -105,6 +105,10 @@ FRED_SERIES = {
     "recession": "USREC",
 }
 
+#: The series the model is actually about. Only these determine how far back
+#: the frame reaches -- comparison indicators join it, they do not extend it.
+CORE_LEVEL_COLUMNS = ("sp500_close", "cpi", "retail_nominal")
+
 #: Comparison indicators, fetched best-effort. These exist so the model can
 #: score its own retail/inflation signals against the recession indicators the
 #: literature actually rates, rather than asserting skill it has not measured.
@@ -498,11 +502,14 @@ def build_monthly_frame(
     # reaches back to 1854, and keeping those rows would pad the sample with
     # decades of recessions the model has no prices or sales for -- inflating
     # the recession count and filling the episode table with empty rows.
-    # Check the level columns only. `sp500_trading_days` is zero-filled rather
-    # than NaN-filled, so including it would make every row look populated.
-    levels = ["sp500_close", *normalised.keys()]
-    levels = [c for c in levels if c != "recession"]
-    first = monthly.index[monthly[levels].notna().any(axis=1)]
+    # Trim on the model's own series only. Two traps here, both hit in
+    # development: `sp500_trading_days` is zero-filled rather than NaN-filled,
+    # so including it makes every row look populated; and a comparison
+    # indicator that happens to start earlier than the model's data (BAA runs
+    # from 1919, nine years before the S&P) would otherwise drag the frame back
+    # and pad it with rows carrying nothing but that one series.
+    core = [c for c in CORE_LEVEL_COLUMNS if c in monthly.columns]
+    first = monthly.index[monthly[core].notna().any(axis=1)]
     return monthly.loc[first.min():] if len(first) else monthly
 
 
@@ -806,10 +813,25 @@ SIGNAL_DEFS: list[dict] = [
         "short": "Real retail sales YoY",
         "column": "retail_yoy_real",
         "kind": "coincident",
+        "condition": "< 0%",
+        "fires": lambda v: v < 0,
+        "note": "Consumers buying less in volume terms. Primarily a description of the present "
+                "(75.8% of recession months against 15.4% of expansion months), though the bare "
+                "one-month rule does carry modest early warning: it first turns negative a median "
+                "7.5 months before the cycle peak.",
+    },
+    {
+        "name": "Real retail sales YoY, 3-month rule",
+        "short": "Real retail, 3mo rule",
+        "column": "retail_yoy_real",
+        "kind": "coincident",
         "condition": "< 0% for 3 months",
         "fires": lambda v: (v < 0) & (v.shift(1) < 0) & (v.shift(2) < 0),
-        "note": "Consumers buying less in volume terms. Strong as a description of the present, "
-                "no use as a forecast -- see the measured lift.",
+        "note": "The same series with a persistence filter, kept alongside to make the trade-off "
+                "visible: demanding three consecutive months cuts lift from 1.52x to 0.74x, and "
+                "from 1.67x to 0.34x once recovery months are excluded. Waiting for confirmation "
+                "spends the entire lead -- the first negative month arrives a median 7.5 months "
+                "before the cycle peak, the third arrives around it.",
     },
     {
         "name": "Inflation minus retail growth",
@@ -1469,6 +1491,18 @@ def build_readme(provenance: pd.DataFrame, splice_note: str, spx_source: str, wi
         ("Retail sales construction", splice_note),
         ("Rolling correlation window", f"{window} months"),
         ("", ""),
+        ("SMOOTHING (--smooth)", "Trailing average on the CPI and retail levels before any growth "
+                                 "rate is computed. Measured: N=3 halves month-to-month churn in the "
+                                 "YoY rate (sd 2.44 -> 1.24) and cuts zero-crossings 108 -> 52; the "
+                                 "coincident odds ratio improves 4.93x -> 5.13x. But leading skill is "
+                                 "unchanged (lift ~0.74x at every N), because the failure is base "
+                                 "effects, not noise -- and the first negative month slips from 7.5 "
+                                 "months BEFORE the cycle peak to 1.5 before (N=3) and 1.0 AFTER "
+                                 "(N=6). Smooth to read the present; do not smooth to forecast."),
+        ("PERSISTENCE", "Demanding consecutive negative months is costly for the same reason: lift "
+                        "falls 1.52x -> 0.99x -> 0.74x for 1, 2 and 3 consecutive months. Both rules "
+                        "ship in the skill table so the trade-off stays visible."),
+        ("", ""),
         ("SHEET: monthly_merged", "Analysis frequency. One row per month, month-start stamped."),
         ("SHEET: daily_merged", "Business-day spine with monthly macro series forward-filled onto it."),
         ("SHEET: recession_episodes", "One row per NBER contraction with market and retail behaviour."),
@@ -1582,6 +1616,26 @@ def run(args: argparse.Namespace) -> int:
             log.warning("Legacy retail series unavailable, history starts 1992: %s", exc)
 
     retail, splice_note = splice_retail_series(retail_modern, retail_legacy)
+
+    # Optional trailing smoothing of the input levels. Trailing, never centred:
+    # a centred window would average in months a real-time observer had not
+    # seen yet, which would leak future information into every past reading.
+    #
+    # Measured effect on this data (see --smooth in the readme sheet): a
+    # 3-month average halves the month-to-month churn in the YoY rate (sd 2.44
+    # -> 1.24) and cuts zero-crossings from 108 to 52, and it slightly sharpens
+    # the coincident reading (recession/expansion odds ratio 4.93x -> 5.13x).
+    # What it does not do is fix the leading problem, because that problem is
+    # base effects rather than noise -- and it costs most of the warning time:
+    # the first negative month moves from 7.5 months BEFORE the cycle peak to
+    # 1.5 months before at N=3, and to 1.0 months AFTER at N=6. Smoothing is
+    # therefore the right call for reading the present and the wrong one for
+    # anticipating the future.
+    if args.smooth > 1:
+        log.info("Applying %d-month trailing average to CPI and retail levels", args.smooth)
+        cpi = cpi.rolling(args.smooth, min_periods=args.smooth).mean().dropna()
+        retail = retail.rolling(args.smooth, min_periods=args.smooth).mean().dropna()
+        splice_note += f"; {args.smooth}-month trailing average applied to levels"
     provenance.add("retail_nominal", "FRED",
                    f"{FRED_SERIES['retail_nominal_modern']}+{FRED_SERIES['retail_nominal_legacy']}"
                    if not retail_legacy.empty else FRED_SERIES["retail_nominal_modern"],
@@ -1748,6 +1802,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="Earliest date requested from the APIs (providers return their full history from here)")
     parser.add_argument("--rolling-window", type=int, default=DEFAULT_ROLLING_WINDOW,
                         help="Rolling correlation window, in months")
+    parser.add_argument("--smooth", type=int, default=1, metavar="N",
+                        help="Trailing N-month average applied to the CPI and retail LEVELS before "
+                             "any growth rate is computed. 1 disables it. Cuts month-to-month noise "
+                             "sharply but delays every signal by roughly (N-1)/2 months")
     parser.add_argument("--horizon", type=int, default=12,
                         help="Forecast horizon, in months, that the signal skill test scores against")
     parser.add_argument("--dpi", type=int, default=200, help="Output resolution for the PNG charts")
