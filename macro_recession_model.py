@@ -1091,6 +1091,35 @@ SIGNAL_DEFS: list[dict] = [
 ]
 
 
+#: Which raw level series each signal column is built from. Used to report a
+#: signal's TRUE last observation rather than the frame's last row: monthly
+#: levels are forward-filled onto the spine, so a series that last printed in
+#: June looks current in an August row. For a "where are we now" reading that
+#: difference matters, so each signal is stamped with the oldest input it
+#: depends on.
+SIGNAL_SOURCE_LEVELS = {
+    "yield_curve": ("ust_10y", "ust_3m"),
+    "curve_uninverting": ("ust_10y", "ust_3m"),
+    "credit_spread_chg12": ("baa", "ust_10y"),
+    "permits_yoy": ("permits",),
+    "claims_yoy": ("claims",),
+    "continued_claims_yoy": ("continued_claims",),
+    "sahm": ("sahm",),
+    "fed_funds_chg12": ("fed_funds",),
+    "real_fed_funds": ("fed_funds", "cpi"),
+    "m2_real_yoy": ("m2_real",),
+    "fed_assets_yoy": ("fed_assets",),
+    "nfci": ("nfci",),
+    "lending_standards": ("lending_standards",),
+    "state_diffusion": ("state_diffusion",),
+    "retail_yoy_real": ("retail_nominal", "cpi"),
+    "inflation_retail_gap": ("retail_nominal", "cpi"),
+    "cpi_yoy": ("cpi",),
+    "sp500_yoy": ("sp500_close",),
+    "policy_tightening_score": ("ust_10y", "ust_3m", "fed_funds", "nfci"),
+}
+
+
 def evaluate_signal_skill(
     df: pd.DataFrame,
     spans: list[tuple[pd.Timestamp, pd.Timestamp]],
@@ -1236,7 +1265,8 @@ def _verdict(lift: float) -> str:
     return "fires LESS often before recessions than chance"
 
 
-def current_signals(df: pd.DataFrame, skill: pd.DataFrame) -> pd.DataFrame:
+def current_signals(df: pd.DataFrame, skill: pd.DataFrame,
+                    last_observed: dict[str, pd.Timestamp] | None = None) -> pd.DataFrame:
     """Latest reading on every indicator, each stamped with its own measured
     track record.
 
@@ -1261,8 +1291,21 @@ def current_signals(df: pd.DataFrame, skill: pd.DataFrame) -> pd.DataFrame:
             continue
 
         fired = spec["fires"](df[col]).reindex(series.index)
+
+        # The frame's last row is not the same as the signal's last real
+        # observation: the monthly levels are forward-filled, so a series whose
+        # newest print is June appears, unchanged, in the August row. Report the
+        # oldest genuine observation among the signal's inputs, and say how
+        # stale that makes the reading.
         latest_date = series.index[-1]
-        value = float(series.iloc[-1])
+        stale = 0
+        if last_observed:
+            sources = [last_observed[k] for k in SIGNAL_SOURCE_LEVELS.get(col, ()) if k in last_observed]
+            if sources:
+                true_date = min(sources)
+                stale = max(0, round((latest_date - true_date).days / 30.44))
+                latest_date = min(latest_date, true_date)
+        value = float(series.loc[:latest_date].iloc[-1]) if len(series.loc[:latest_date]) else float(series.iloc[-1])
         triggered = bool(fired.iloc[-1]) if pd.notna(fired.iloc[-1]) else False
 
         # Months in the last twelve for which the condition held. A single
@@ -1276,6 +1319,7 @@ def current_signals(df: pd.DataFrame, skill: pd.DataFrame) -> pd.DataFrame:
                 "indicator": spec["name"],
                 "kind": spec["kind"],
                 "as_of": latest_date.date().isoformat(),
+                "months_stale": stale,
                 "value": _r(value),
                 "condition": spec["condition"],
                 "triggered": triggered,
@@ -1296,6 +1340,7 @@ def current_signals(df: pd.DataFrame, skill: pd.DataFrame) -> pd.DataFrame:
             "indicator": "NBER recession flag (USREC)",
             "kind": "official (lagging)",
             "as_of": latest.name.date().isoformat(),
+            "months_stale": 0,
             "value": int(latest["recession"]),
             "condition": "= 1",
             "triggered": int(latest["recession"]) == 1,
@@ -2023,7 +2068,10 @@ def run(args: argparse.Namespace) -> int:
     leadlag = lead_lag_correlation(monthly)
     corr = correlation_matrix(monthly)
     skill = evaluate_signal_skill(monthly, spans, horizon=args.horizon)
-    signals = current_signals(monthly, skill)
+    # True last-observation date per raw level, taken before the forward-fill.
+    last_observed = {name: series.index.max() for name, series in monthly_levels.items() if len(series)}
+    last_observed["sp500_close"] = spx.index.max().to_period("M").to_timestamp(how="start")
+    signals = current_signals(monthly, skill, last_observed)
 
     # ----- 4. Charts -------------------------------------------------------
     log.info("Rendering charts ...")
@@ -2104,8 +2152,9 @@ def _print_summary(monthly, episodes, leadlag, signals, skill, spans, artifacts)
         mark = "FIRING" if row["triggered"] else "  --  "
         value = f"{row['value']:>9.2f}" if isinstance(row["value"], (int, float, np.floating)) else f"{row['value']:>9}"
         lift = f"{row['measured_lift']:.2f}x" if pd.notna(row["measured_lift"]) else "  n/a"
-        print(f"  [{mark}] {row['indicator'][:36]:<38}{value}  {row['condition']:<18}"
-              f"lift {lift:>6}  ({row['kind']})")
+        age = f" [{int(row['months_stale'])}mo old]" if row.get("months_stale", 0) else ""
+        print(f"  [{mark}] {row['indicator'][:34]:<36}{value}  {row['as_of']}  {row['condition']:<18}"
+              f"lift {lift:>6}{age}")
 
     lead_fired = signals[(signals["kind"] == "leading") & signals["triggered"]]
     print(f"\n  {int(signals['triggered'].sum())} of {len(signals)} indicators firing; "
