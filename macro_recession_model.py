@@ -143,6 +143,12 @@ SPLICE_OVERLAP = ("1992-01-01", "2001-04-01")
 MAX_RETRIES = 4
 BACKOFF_BASE_SECONDS = 2.0
 
+#: Start of the "modern" era used for the era-split columns in the skill
+#: table. 1985 marks the onset of the Great Moderation: recessions become far
+#: rarer after it, which changes what any signal's firing is worth. The split
+#: is reported rather than applied -- both halves ship side by side.
+MODERN_ERA_START = "1985-01-01"
+
 #: Rolling correlation window in months. 36 months is long enough to damp out
 #: single-quarter noise but short enough to show regime changes.
 DEFAULT_ROLLING_WINDOW = 36
@@ -1194,6 +1200,14 @@ def evaluate_signal_skill(
         n, base, prec, rec, lift, skill = score(usable)
         _, _, _, _, lift_ex, _ = score(usable & (since_end > 12))
 
+        # Era split. Lift is measured against each era's own base rate, so a
+        # signal can hold its lift while its absolute reliability collapses --
+        # which is exactly what the yield curve does. Pooling the full sample
+        # hides that, so both halves are reported.
+        modern = df.index >= pd.Timestamp(MODERN_ERA_START)
+        _, base_pre, prec_pre, _, lift_pre, _ = score(usable & ~modern)
+        _, base_mod, prec_mod, _, lift_mod, _ = score(usable & modern)
+
         # Distinct firing episodes, and how many were followed by a recession.
         # This is the honest denominator. A signal that stays on for a year
         # contributes twelve highly correlated months to `precision` but only
@@ -1216,6 +1230,11 @@ def evaluate_signal_skill(
                 "lift": _r(lift),
                 "lift_ex_recovery": _r(lift_ex),
                 "skill_captured": _r(skill, 3),
+                "precision_pre1985_pct": _r(prec_pre),
+                "lift_pre1985": _r(lift_pre),
+                "precision_1985on_pct": _r(prec_mod),
+                "lift_1985on": _r(lift_mod),
+                "base_rate_1985on_pct": _r(base_mod),
                 "max_possible_lift": _r(1 / (base / 100) if base else np.nan),
                 "episodes": episodes,
                 "episodes_followed_by_recession": hits,
@@ -1870,6 +1889,31 @@ def build_readme(provenance: pd.DataFrame, splice_note: str, spx_source: str, wi
                                    "months in 1928-1959, 21.6% in 1960-1984, 13.8% in 1985-2007 and 5.9% "
                                    "in 2008-2026. A series measured only in the modern era therefore has "
                                    "roughly triple the headroom on lift that a long-history series has."),
+        ("READING era split", "precision_pre1985_pct / precision_1985on_pct and their lifts. Read "
+                              "these before acting on the pooled number: several signals that dominate "
+                              "the full-sample ranking are worthless in the modern era. Fed tightening "
+                              "goes from 67.2% precision to 0.0%; real M2 from 77.8% to 1.1%; the policy "
+                              "composite, top of the pooled table, from 72.7% to 0.0%. Soft landings "
+                              "are a modern phenomenon and the monetary signals do not survive them."),
+        ("FINDING what changed", "The yield curve keeps its LIFT across the break (3.28x to 3.08x) while "
+                                 "its absolute reliability collapses (82.1% to 31.8% precision). Both are "
+                                 "true: relative to a base rate that fell from 25% to 10% it is as "
+                                 "informative as ever, but an inversion today is much weaker evidence "
+                                 "than an inversion in 1970. Signals that IMPROVED after 1985 are the "
+                                 "credit and labour ones -- financial conditions 1.52x to 3.29x, jobless "
+                                 "claims 1.76x to 2.67x, continued claims 1.18x to 2.20x -- and the curve "
+                                 "un-inverting, 1.48x to 4.14x, the strongest modern signal in the table."),
+        ("FINDING NBER definition", "NBER has NOT switched away from a two-quarters-of-falling-GDP rule, "
+                                    "because it never used one. Quarters that meet the technical rule but "
+                                    "were not NBER recessions number zero in every era since 1948 except "
+                                    "1947 Q3; the reverse case -- NBER recessions without two negative "
+                                    "quarters -- numbers 13, 14, 8 and 1 across the eras. NBER has always "
+                                    "been broader than the popular rule. What HAS changed is the object: "
+                                    "recessions are about four times rarer, shorter in median duration "
+                                    "(8mo since 1985 against 10-11mo before) and sharper (median real "
+                                    "retail trough -9.4% against -4.7%, median S&P drawdown -30.2% "
+                                    "against -18.6%). The 2020 call, at two months, also broke NBER's "
+                                    "usual duration norm outright."),
         ("CAVEAT Great Moderation", "The US spent 24.2% of months in recession before 1960 and 5.8% in "
                                     "1985-2007. Pooling the whole sample averages across genuinely "
                                     "different regimes, and a signal that worked in the volatile "
