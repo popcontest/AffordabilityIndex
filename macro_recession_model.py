@@ -636,6 +636,13 @@ def add_derived_metrics(monthly: pd.DataFrame) -> pd.DataFrame:
     # study of "what followed this reading" but must never be used as a feature.
     df["sp500_fwd_12m"] = (df["sp500_close"].shift(-12) / df["sp500_close"] - 1.0) * 100.0
 
+    # Drawdown from the trailing 12-month high. Included to test the common
+    # intuition that a falling market warns of recession -- it does not, and
+    # the deeper the fall the worse it warns. See the signal note below.
+    df["sp500_drawdown_12m"] = (
+        df["sp500_close"] / df["sp500_close"].rolling(12, min_periods=12).max() - 1.0
+    ) * 100.0
+
     # --- Comparison leading indicators -------------------------------------
     # These are not part of the retail/inflation thesis. They are here as a
     # yardstick: without them there is no way to tell whether a retail signal
@@ -1085,6 +1092,32 @@ SIGNAL_DEFS: list[dict] = [
                 "invites the rate hikes that historically do the damage.",
     },
     {
+        "name": "S&P 500 real (inflation-adjusted) YoY",
+        "short": "S&P 500 real YoY",
+        "column": "sp500_yoy_real",
+        "kind": "market",
+        "condition": "< 0%",
+        "fires": lambda v: v < 0,
+        "note": "The index deflated by CPI. Much the better of the two market formulations -- 1.69x "
+                "against the nominal rule's 0.90x -- because a nominal gain during high inflation is "
+                "a real loss, and it is the real loss that coincides with a squeezed economy. It "
+                "still fades to 1.02x after 1985.",
+    },
+    {
+        "name": "S&P 500 drawdown from 12m high",
+        "short": "S&P 500 drawdown",
+        "column": "sp500_drawdown_12m",
+        "kind": "market",
+        "condition": "< -20%",
+        "fires": lambda v: v < -20.0,
+        "note": "A documented negative, and the most counter-intuitive result in this table: skill "
+                "falls MONOTONICALLY as the drawdown deepens -- 1.25x at -5%, 0.69x at -10%, 0.26x "
+                "at -15%, 0.15x at -20% on 1 of 11 episodes. A bear market is not an early warning. "
+                "Big declines either happen inside a recession, where they are excluded from this "
+                "test, or are standalone crashes that never became one. The market's useful "
+                "contribution is the TIMING of its peak, not the size of its fall.",
+    },
+    {
         "name": "S&P 500 YoY",
         "short": "S&P 500 YoY",
         "column": "sp500_yoy",
@@ -1122,6 +1155,8 @@ SIGNAL_SOURCE_LEVELS = {
     "inflation_retail_gap": ("retail_nominal", "cpi"),
     "cpi_yoy": ("cpi",),
     "sp500_yoy": ("sp500_close",),
+    "sp500_yoy_real": ("sp500_close", "cpi"),
+    "sp500_drawdown_12m": ("sp500_close",),
     "policy_tightening_score": ("ust_10y", "ust_3m", "fed_funds", "nfci"),
 }
 
@@ -1895,6 +1930,17 @@ def build_readme(provenance: pd.DataFrame, splice_note: str, spx_source: str, wi
                               "goes from 67.2% precision to 0.0%; real M2 from 77.8% to 1.1%; the policy "
                               "composite, top of the pooled table, from 72.7% to 0.0%. Soft landings "
                               "are a modern phenomenon and the monetary signals do not survive them."),
+        ("FINDING the market's role", "The S&P is the model's WORST predictor and one of its better "
+                                      "descriptions. As a signal: nominal YoY < 0 scores 0.90x, below "
+                                      "the no-information line; deflating by CPI lifts it to 1.69x; and "
+                                      "drawdown depth runs BACKWARDS -- 1.25x at -5% falling to 0.15x at "
+                                      "-20%. A bear market is not an early warning. What the index does "
+                                      "carry is timing: its peak leads the NBER cycle peak by a median "
+                                      "5.5 months, though with a standard deviation of 5.1 and under one "
+                                      "month of warning in 5 of 15 recessions. Its other role here is as "
+                                      "the thing being predicted rather than the predictor -- chart 2 "
+                                      "asks what the market DID after a squeezed consumer, not what it "
+                                      "foretold."),
         ("FINDING what changed", "The yield curve keeps its LIFT across the break (3.28x to 3.08x) while "
                                  "its absolute reliability collapses (82.1% to 31.8% precision). Both are "
                                  "true: relative to a base rate that fell from 25% to 10% it is as "
