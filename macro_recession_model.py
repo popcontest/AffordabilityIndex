@@ -128,6 +128,17 @@ FRED_INDICATORS = {
     "fed_assets": ("WALCL", "mean"),    # Fed total assets (QE/QT), weekly, 2002->
     "lending_standards": ("DRTSCILM", "mean"),  # SLOOS: net % of banks tightening C&I, 1990->
     "continued_claims": ("CCSA", "mean"),       # continued jobless claims, weekly, 1967->
+    # --- The series NBER's dating committee actually cites ---
+    # The model previously contained only one of these five (retail sales), so
+    # it was predicting a label defined largely on data it did not hold.
+    "mfg_trade_sales": ("CMRMTSPL", "mean"),    # real manufacturing + trade sales, 1967->
+    "income_ex_transfers": ("W875RX1", "mean"), # real personal income less transfers, 1959->
+    "payrolls": ("PAYEMS", "mean"),             # all employees, total nonfarm, 1939->
+    "indpro": ("INDPRO", "mean"),               # industrial production, 1919->
+    # PCECC96 is the LEVEL (quarterly, 1947->). DPCERAM1M225NBEA looks like a
+    # tempting monthly alternative but is a percent-change series, so growth
+    # rates computed from it are meaningless.
+    "real_pce": ("PCECC96", "mean"),            # real personal consumption expenditures, 1947->
 }
 
 #: Yahoo tickers tried in order. ^SPX is the requested symbol; ^GSPC is the
@@ -671,6 +682,21 @@ def add_derived_metrics(monthly: pd.DataFrame) -> pd.DataFrame:
         # Initial jobless claims, YoY. Rising claims lead payroll losses.
         df["claims_yoy"] = df["claims"].pct_change(12) * 100.0
 
+    # --- NBER dating criteria ---------------------------------------------
+    # These are what the committee weighs when it dates a cycle. They belong in
+    # the model as COINCIDENT measures: they describe the recession, they do not
+    # forecast it. Including them is what lets the model speak the same language
+    # as the label it is scored against.
+    for raw, derived in (
+        ("mfg_trade_sales", "mfg_trade_sales_yoy"),
+        ("income_ex_transfers", "income_ex_transfers_yoy"),
+        ("payrolls", "payrolls_yoy"),
+        ("indpro", "indpro_yoy"),
+        ("real_pce", "real_pce_yoy"),
+    ):
+        if raw in df.columns:
+            df[derived] = df[raw].pct_change(12) * 100.0
+
     # --- Monetary policy stance ------------------------------------------
     if "fed_funds" in df.columns:
         # How hard the Fed has tightened over the past year. This is the
@@ -1047,6 +1073,67 @@ SIGNAL_DEFS: list[dict] = [
                 "its measured skill.",
     },
     {
+        "name": "Real manufacturing & trade sales YoY",
+        "short": "Mfg + trade sales YoY",
+        "column": "mfg_trade_sales_yoy",
+        "kind": "coincident",
+        "condition": "< 0%",
+        "fires": lambda v: v < 0,
+        "note": "An NBER dating criterion, and a strictly better version of this model's original "
+                "retail measure: it covers manufacturing and wholesale as well as retail, and beats "
+                "real retail sales on both counts -- 8.15x coincident odds against 4.86x, and 2.18x "
+                "leading lift against 1.52x.",
+    },
+    {
+        "name": "Real personal income ex-transfers YoY",
+        "short": "Real income ex-transfers",
+        "column": "income_ex_transfers_yoy",
+        "kind": "coincident",
+        "condition": "< 0%",
+        "fires": lambda v: v < 0,
+        "note": "An NBER dating criterion. Excluding transfers matters: government support payments "
+                "prop up headline income precisely during downturns, which is why the 2020-21 "
+                "episode looks so different on the two measures. Strongly coincident (6.30x) and "
+                "useless as a forecast (0.28x), which is exactly what a dating criterion should be.",
+    },
+    {
+        "name": "Nonfarm payrolls YoY",
+        "short": "Nonfarm payrolls YoY",
+        "column": "payrolls_yoy",
+        "kind": "coincident",
+        "condition": "< 0%",
+        "fires": lambda v: v < 0,
+        "note": "An NBER dating criterion, and arguably the one that decides modern calls -- 2022 had "
+                "falling GDP and booming payrolls, and was not called a recession.",
+    },
+    {
+        "name": "Industrial production YoY",
+        "short": "Industrial production YoY",
+        "column": "indpro_yoy",
+        "kind": "coincident",
+        "condition": "< 0%",
+        "fires": lambda v: v < 0,
+        "note": "An NBER dating criterion with history back to 1919. Its coincident power (4.60x) has "
+                "to be read against a shrinking share of the economy: manufacturing weakness is no "
+                "longer synonymous with a downturn.",
+    },
+    {
+        "name": "Real personal consumption YoY",
+        "short": "Real PCE YoY",
+        "column": "real_pce_yoy",
+        "kind": "coincident",
+        "condition": "< 0%",
+        "fires": lambda v: v < 0,
+        "note": "An NBER dating criterion, and the most SPECIFIC measure in the model: it fires in "
+                "only 2.7% of expansion months, giving the highest coincident odds ratio here at "
+                "10.52x. It is also the least SENSITIVE -- only 28.2% of recession months show it, "
+                "against 77.6% for manufacturing and trade sales. Total consumption is roughly "
+                "two-thirds services, which barely fall, so a year-over-year decline is rare even in "
+                "a downturn. Read it as near-conclusive when it fires and uninformative when it does "
+                "not. As a forecast it is worthless (0.52x, 1 of 4 episodes), which is what a dating "
+                "criterion should be.",
+    },
+    {
         "name": "Real retail sales YoY",
         "short": "Real retail sales YoY",
         "column": "retail_yoy_real",
@@ -1154,6 +1241,11 @@ SIGNAL_SOURCE_LEVELS = {
     "retail_yoy_real": ("retail_nominal", "cpi"),
     "inflation_retail_gap": ("retail_nominal", "cpi"),
     "cpi_yoy": ("cpi",),
+    "mfg_trade_sales_yoy": ("mfg_trade_sales",),
+    "income_ex_transfers_yoy": ("income_ex_transfers",),
+    "payrolls_yoy": ("payrolls",),
+    "indpro_yoy": ("indpro",),
+    "real_pce_yoy": ("real_pce",),
     "sp500_yoy": ("sp500_close",),
     "sp500_yoy_real": ("sp500_close", "cpi"),
     "sp500_drawdown_12m": ("sp500_close",),
@@ -1359,12 +1451,22 @@ def current_signals(df: pd.DataFrame, skill: pd.DataFrame,
                 true_date = min(sources)
                 stale = max(0, round((latest_date - true_date).days / 30.44))
                 latest_date = min(latest_date, true_date)
-        value = float(series.loc[:latest_date].iloc[-1]) if len(series.loc[:latest_date]) else float(series.iloc[-1])
-        triggered = bool(fired.iloc[-1]) if pd.notna(fired.iloc[-1]) else False
+        # Everything below is evaluated at latest_date, not at the frame's last
+        # row. Reading `value` at the true date while leaving `triggered` on the
+        # filled row produced rows that contradicted themselves -- a value of
+        # +0.14 reported as firing a "< 0%" condition.
+        visible = series.loc[:latest_date]
+        fired_visible = fired.loc[:latest_date]
+        value = float(visible.iloc[-1]) if len(visible) else float(series.iloc[-1])
+        triggered = (
+            bool(fired_visible.iloc[-1])
+            if len(fired_visible) and pd.notna(fired_visible.iloc[-1])
+            else False
+        )
 
         # Months in the last twelve for which the condition held. A single
         # month at the threshold is noise on every one of these series.
-        recent = fired.tail(12)
+        recent = fired_visible.tail(12)
         months_fired = int(recent.sum()) if recent.notna().any() else 0
 
         entry = ranked.loc[spec["name"]] if spec["name"] in ranked.index else None
