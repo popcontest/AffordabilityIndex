@@ -139,6 +139,11 @@ FRED_INDICATORS = {
     # tempting monthly alternative but is a percent-change series, so growth
     # rates computed from it are meaningless.
     "real_pce": ("PCECC96", "mean"),            # real personal consumption expenditures, 1947->
+    # --- Fiscal ---
+    "fed_receipts": ("FGRECPT", "mean"),        # federal current receipts, quarterly, 1947->
+    "fed_outlays": ("FGEXPND", "mean"),         # federal current expenditures, quarterly, 1947->
+    "nominal_gdp": ("GDP", "mean"),             # nominal GDP, quarterly, 1947->
+    "govt_spending": ("GCEC1", "mean"),         # real govt consumption + investment, quarterly, 1947->
 }
 
 #: Yahoo tickers tried in order. ^SPX is the requested symbol; ^GSPC is the
@@ -697,6 +702,24 @@ def add_derived_metrics(monthly: pd.DataFrame) -> pd.DataFrame:
         if raw in df.columns:
             df[derived] = df[raw].pct_change(12) * 100.0
 
+    # --- Fiscal stance ------------------------------------------------------
+    # Fiscal variables are the clearest case of endogeneity in this model.
+    # Automatic stabilisers widen the deficit BECAUSE a recession is happening:
+    # tax receipts collapse and transfer payments rise without anyone deciding
+    # anything. So a widening deficit is a symptom, and treating it as a
+    # forecast inverts cause and effect. Measured here: the first month of
+    # >1pp-of-GDP widening arrives a median ONE MONTH AFTER the recession
+    # begins, and precedes it in only 3 of 12 recessions.
+    if {"fed_receipts", "fed_outlays", "nominal_gdp"} <= set(df.columns):
+        df["federal_balance_pct_gdp"] = (
+            (df["fed_receipts"] - df["fed_outlays"]) / df["nominal_gdp"] * 100.0
+        )
+        # Four-quarter change in the balance. Negative = the deficit widened =
+        # fiscal expansion; positive = consolidation.
+        df["fiscal_impulse_4q"] = df["federal_balance_pct_gdp"].diff(12)
+    if "govt_spending" in df.columns:
+        df["govt_spending_yoy"] = df["govt_spending"].pct_change(12) * 100.0
+
     # --- Monetary policy stance ------------------------------------------
     if "fed_funds" in df.columns:
         # How hard the Fed has tightened over the past year. This is the
@@ -1073,6 +1096,33 @@ SIGNAL_DEFS: list[dict] = [
                 "its measured skill.",
     },
     {
+        "name": "Federal deficit widening",
+        "short": "Deficit widening",
+        "column": "fiscal_impulse_4q",
+        "kind": "coincident",
+        "condition": "> 2pp of GDP in 4q",
+        "fires": lambda v: v < -2.0,
+        "note": "Strongly coincident (5.48x odds) and anti-predictive (0.17x, 1 of 12 episodes), "
+                "because automatic stabilisers widen the deficit as a CONSEQUENCE of the downturn. "
+                "The timing is explicit: >1pp widening first appears a median one month AFTER the "
+                "recession starts and leads it in only 3 of 12 cases. Useful for confirming where "
+                "you are, useless for anticipating where you are going, and a standing warning "
+                "against reading a fiscal response as a fiscal signal.",
+    },
+    {
+        "name": "Real government spending YoY",
+        "short": "Govt spending YoY",
+        "column": "govt_spending_yoy",
+        "kind": "coincident",
+        "condition": "< 0%",
+        "fires": lambda v: v < 0,
+        "note": "A documented null. Real government consumption and investment falling scores 0.53x "
+                "leading and 0.68x coincident -- it carries no information in either direction. "
+                "Fiscal austerity as a recession trigger does not show up: deficit consolidation of "
+                "more than 1pp of GDP scores 0.78x. Whatever fiscal policy does to the cycle, it is "
+                "not visible in these aggregates at this frequency.",
+    },
+    {
         "name": "Real manufacturing & trade sales YoY",
         "short": "Mfg + trade sales YoY",
         "column": "mfg_trade_sales_yoy",
@@ -1246,6 +1296,8 @@ SIGNAL_SOURCE_LEVELS = {
     "payrolls_yoy": ("payrolls",),
     "indpro_yoy": ("indpro",),
     "real_pce_yoy": ("real_pce",),
+    "fiscal_impulse_4q": ("fed_receipts", "fed_outlays", "nominal_gdp"),
+    "govt_spending_yoy": ("govt_spending",),
     "sp500_yoy": ("sp500_close",),
     "sp500_yoy_real": ("sp500_close", "cpi"),
     "sp500_drawdown_12m": ("sp500_close",),
@@ -2032,6 +2084,15 @@ def build_readme(provenance: pd.DataFrame, splice_note: str, spx_source: str, wi
                               "goes from 67.2% precision to 0.0%; real M2 from 77.8% to 1.1%; the policy "
                               "composite, top of the pooled table, from 72.7% to 0.0%. Soft landings "
                               "are a modern phenomenon and the monetary signals do not survive them."),
+        ("FINDING fiscal policy", "No fiscal aggregate carries leading information. Deficit widening "
+                                  "scores 0.17x, deficit consolidation 0.78x, real government spending "
+                                  "falling 0.53x, a deficit worse than 5% of GDP 0.00x on 0 of 8 "
+                                  "episodes. The reason is endogeneity: automatic stabilisers widen the "
+                                  "deficit because a recession is happening, so it is a symptom being "
+                                  "read as a cause. Measured directly, >1pp-of-GDP widening first "
+                                  "appears a median ONE MONTH AFTER the recession begins and leads it "
+                                  "in only 3 of 12 cases. As a coincident marker it is strong (5.48x "
+                                  "odds at the 2pp threshold); as a forecast it is worse than nothing."),
         ("FINDING the market's role", "The S&P is the model's WORST predictor and one of its better "
                                       "descriptions. As a signal: nominal YoY < 0 scores 0.90x, below "
                                       "the no-information line; deflating by CPI lifts it to 1.69x; and "
