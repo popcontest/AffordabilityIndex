@@ -144,6 +144,18 @@ FRED_INDICATORS = {
     "fed_outlays": ("FGEXPND", "mean"),         # federal current expenditures, quarterly, 1947->
     "nominal_gdp": ("GDP", "mean"),             # nominal GDP, quarterly, 1947->
     "govt_spending": ("GCEC1", "mean"),         # real govt consumption + investment, quarterly, 1947->
+    # --- Household balance sheet ---
+    "saving_rate": ("PSAVERT", "mean"),         # personal saving rate, 1959->
+    "household_debt": ("CMDEBT", "mean"),       # household debt level, quarterly, 1945->
+    "net_worth_dpi": ("HNONWPDPI", "mean"),     # household net worth % of disposable income, 1946->
+    "loan_delinquency": ("DRALACBS", "mean"),   # delinquency rate, all bank loans, 1985->
+    # --- International ---
+    "de_10y": ("IRLTLT01DEM156N", "mean"),      # German 10-year govt bond yield, 1956->
+    "de_3m": ("IR3TIB01DEM156N", "mean"),       # German 3-month interbank rate, 1960->
+    "uk_recession": ("GBRRECDM", "mean"),       # UK recession indicator (discontinued 2022)
+    "oecd_recession": ("OECDRECDM", "mean"),    # OECD-wide recession indicator (discontinued 2022)
+    "ecb_assets": ("ECBASSETSW", "mean"),       # ECB total assets, 1999->
+    "boj_assets": ("JPNASSETS", "mean"),        # Bank of Japan total assets, 1998->
 }
 
 #: Yahoo tickers tried in order. ^SPX is the requested symbol; ^GSPC is the
@@ -702,6 +714,30 @@ def add_derived_metrics(monthly: pd.DataFrame) -> pd.DataFrame:
         if raw in df.columns:
             df[derived] = df[raw].pct_change(12) * 100.0
 
+    # --- Household balance sheet -------------------------------------------
+    # Households turn out to behave like the policy variables: their stress
+    # shows up as a consequence of the downturn, not ahead of it. Delinquencies
+    # are the clearest case -- people default because they lost the job, which
+    # is why the series is strongly coincident and anti-predictive.
+    if "household_debt" in df.columns:
+        df["household_debt_yoy"] = df["household_debt"].pct_change(12) * 100.0
+    if "net_worth_dpi" in df.columns:
+        df["net_worth_dpi_yoy"] = df["net_worth_dpi"].pct_change(12) * 100.0
+    if "loan_delinquency" in df.columns:
+        df["loan_delinquency_chg12"] = df["loan_delinquency"].diff(12)
+
+    # --- International ------------------------------------------------------
+    # The German term spread is the most valuable non-US series tested. It is
+    # NOT redundant with the US curve (they co-fire at phi +0.36) and it scores
+    # 3.38x in precisely the months when the US curve is not inverted, so it
+    # catches episodes the domestic signal misses.
+    if {"de_10y", "de_3m"} <= set(df.columns):
+        df["german_yield_curve"] = df["de_10y"] - df["de_3m"]
+    if "ecb_assets" in df.columns:
+        df["ecb_assets_yoy"] = df["ecb_assets"].pct_change(12) * 100.0
+    if "boj_assets" in df.columns:
+        df["boj_assets_yoy"] = df["boj_assets"].pct_change(12) * 100.0
+
     # --- Fiscal stance ------------------------------------------------------
     # Fiscal variables are the clearest case of endogeneity in this model.
     # Automatic stabilisers widen the deficit BECAUSE a recession is happening:
@@ -1096,6 +1132,115 @@ SIGNAL_DEFS: list[dict] = [
                 "its measured skill.",
     },
     {
+        "name": "German yield curve inverted",
+        "short": "German yield curve",
+        "column": "german_yield_curve",
+        "kind": "leading",
+        "condition": "< 0",
+        "fires": lambda v: v < 0,
+        "note": "The best non-US signal tested, and genuinely additive rather than an echo of the "
+                "domestic curve: the two co-fire at only phi +0.36, and restricted to months when "
+                "the US curve is NOT inverted the German one still scores 3.38x. Standalone 2.80x "
+                "on 8 of 10 episodes back to 1960. Global monetary conditions bind US activity "
+                "through channels the US curve alone does not price.",
+    },
+    {
+        "name": "UK recession under way",
+        "short": "UK recession",
+        "column": "uk_recession",
+        "kind": "leading",
+        "condition": "= 1",
+        "fires": lambda v: v > 0.5,
+        "note": "A recession abroad genuinely leads one at home: 2.01x on 9 of 19 episodes since "
+                "1955. Euro-area (0.74x) and Japanese (0.81x) recessions do not, so this is not a "
+                "general 'foreign weakness' effect. DISCONTINUED in 2022 -- it can no longer produce "
+                "a current reading, and the staleness column will say so.",
+    },
+    {
+        "name": "OECD-wide recession under way",
+        "short": "OECD recession",
+        "column": "oecd_recession",
+        "kind": "leading",
+        "condition": "= 1",
+        "fires": lambda v: v > 0.5,
+        "note": "Broad synchronised weakness across the OECD, 1.63x on 8 of 20 episodes. Also "
+                "DISCONTINUED in 2022.",
+    },
+    {
+        "name": "ECB balance sheet shrinking",
+        "short": "ECB balance sheet",
+        "column": "ecb_assets_yoy",
+        "kind": "leading",
+        "condition": "< 0%",
+        "fires": lambda v: v < 0,
+        "note": "Non-US quantitative tightening, and a documented null exactly like the Fed's own: "
+                "0.17x on 1 of 6 episodes since 2000. Central bank balance sheets contract when "
+                "conditions are calm and expand into crises, so the sign is endogenous wherever you "
+                "measure it.",
+    },
+    {
+        "name": "Bank of Japan balance sheet shrinking",
+        "short": "BoJ balance sheet",
+        "column": "boj_assets_yoy",
+        "kind": "leading",
+        "condition": "< 0%",
+        "fires": lambda v: v < 0,
+        "note": "1.64x, but on 2 of 8 episodes and only since 1999 -- two US recessions in the "
+                "sample. Treat as a curiosity rather than a signal; it is here because non-US "
+                "central bank activity was worth checking, and this is the only part of it that "
+                "was not flatly null.",
+    },
+    {
+        "name": "Household debt growth",
+        "short": "Household debt YoY",
+        "column": "household_debt_yoy",
+        "kind": "context",
+        "condition": "> +8%",
+        "fires": lambda v: v > 8.0,
+        "note": "A necessary-but-not-sufficient pattern, and the clearest example of why lift and "
+                "episode count must be read together: it precedes 11 of 14 firing episodes yet "
+                "scores only 1.36x, and its coincident ratio is 0.90x -- it fires in 56.8% of "
+                "expansion months. Rapid household borrowing was simply the post-war norm. Most "
+                "recessions followed a credit boom; most credit booms produced no recession.",
+    },
+    {
+        "name": "Household net worth falling",
+        "short": "Net worth vs income",
+        "column": "net_worth_dpi_yoy",
+        "kind": "coincident",
+        "condition": "< 0%",
+        "fires": lambda v: v < 0,
+        "note": "Net worth relative to disposable income. Coincident (1.84x) and anti-predictive "
+                "(0.65x) -- it falls because asset prices fall, which is the recession rather than "
+                "a warning of it.",
+    },
+    {
+        "name": "Loan delinquencies rising",
+        "short": "Loan delinquencies",
+        "column": "loan_delinquency_chg12",
+        "kind": "coincident",
+        "condition": "> +0.3pp in 12m",
+        "fires": lambda v: v > 0.3,
+        "note": "The strongest coincident household measure by a distance: it fires in 94.4% of "
+                "recession months against 9.7% of expansion months, a 9.70x odds ratio. Its 2.78x "
+                "leading lift (4.34x ex-recovery, 3 of 7 episodes) is better than the household "
+                "story would suggest, but rests on a 1986-onward sample covering four recessions, "
+                "and on a quarterly series carried across months. Read the episode count, not the "
+                "lift. Note also that scoring this on the sparse quarterly points rather than the "
+                "filled monthly grid gives 0.77x -- a swing large enough that the construction, not "
+                "the data, is doing much of the work here.",
+    },
+    {
+        "name": "Personal saving rate low",
+        "short": "Saving rate",
+        "column": "saving_rate",
+        "kind": "context",
+        "condition": "< 5%",
+        "fires": lambda v: v < 5.0,
+        "note": "Households running thin buffers, 1.41x on 2 of 10 episodes. The weakest kind of "
+                "evidence in this table: a modest lift resting on very few distinct events.",
+    },
+    {
         "name": "Federal deficit widening",
         "short": "Deficit widening",
         "column": "fiscal_impulse_4q",
@@ -1298,6 +1443,15 @@ SIGNAL_SOURCE_LEVELS = {
     "real_pce_yoy": ("real_pce",),
     "fiscal_impulse_4q": ("fed_receipts", "fed_outlays", "nominal_gdp"),
     "govt_spending_yoy": ("govt_spending",),
+    "german_yield_curve": ("de_10y", "de_3m"),
+    "uk_recession": ("uk_recession",),
+    "oecd_recession": ("oecd_recession",),
+    "ecb_assets_yoy": ("ecb_assets",),
+    "boj_assets_yoy": ("boj_assets",),
+    "household_debt_yoy": ("household_debt",),
+    "net_worth_dpi_yoy": ("net_worth_dpi",),
+    "loan_delinquency_chg12": ("loan_delinquency",),
+    "saving_rate": ("saving_rate",),
     "sp500_yoy": ("sp500_close",),
     "sp500_yoy_real": ("sp500_close", "cpi"),
     "sp500_drawdown_12m": ("sp500_close",),
