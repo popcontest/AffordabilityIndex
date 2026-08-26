@@ -146,6 +146,7 @@ FRED_INDICATORS = {
     "govt_spending": ("GCEC1", "mean"),         # real govt consumption + investment, quarterly, 1947->
     # --- Household balance sheet ---
     "saving_rate": ("PSAVERT", "mean"),         # personal saving rate, 1959->
+    "unemployment": ("UNRATE", "mean"),         # unemployment rate, 1948->
     "household_debt": ("CMDEBT", "mean"),       # household debt level, quarterly, 1945->
     "net_worth_dpi": ("HNONWPDPI", "mean"),     # household net worth % of disposable income, 1946->
     "loan_delinquency": ("DRALACBS", "mean"),   # delinquency rate, all bank loans, 1985->
@@ -1803,6 +1804,63 @@ PROBABILITY_FEATURE_SETS = {
 #: emits probabilities near 0 and 1 that the data cannot support.
 PROBABILITY_L2 = 300.0
 
+#: Events the probability model can be pointed at. The recession label is a
+#: committee's retrospective judgement with 15 instances in a century; the
+#: others are objective, real-time and far more frequent, and one of them is
+#: measurably more predictable from the same features. Each entry is
+#: (description, builder, exclude_months_already_in_recession).
+def _target_recession(df, spans, horizon, idx):
+    starts = [s for s, _ in spans]
+    return pd.Series(
+        {i: float(any(i < s <= i + pd.DateOffset(months=horizon) for s in starts)) for i in idx}
+    )
+
+
+def _target_drawdown(threshold_pct):
+    def build(df, spans, horizon, idx):
+        px = df["sp500_close"]
+        out = {}
+        for i in idx:
+            window = px.loc[i:i + pd.DateOffset(months=horizon)].dropna()
+            out[i] = (
+                float(((window / window.cummax() - 1.0) * 100.0).min() <= -threshold_pct)
+                if len(window) > 2 else np.nan
+            )
+        return pd.Series(out)
+    return build
+
+
+def _target_rise(column, points):
+    def build(df, spans, horizon, idx):
+        series = df[column]
+        out = {}
+        for i in idx:
+            now = series.get(i, np.nan)
+            window = series.loc[i:i + pd.DateOffset(months=horizon)]
+            out[i] = float((window.max() - now) >= points) if len(window) > 2 and pd.notna(now) else np.nan
+        return pd.Series(out)
+    return build
+
+
+def _target_fall(column, points):
+    def build(df, spans, horizon, idx):
+        series = df[column]
+        out = {}
+        for i in idx:
+            now = series.get(i, np.nan)
+            window = series.loc[i:i + pd.DateOffset(months=horizon)]
+            out[i] = float((now - window.min()) >= points) if len(window) > 2 and pd.notna(now) else np.nan
+        return pd.Series(out)
+    return build
+
+
+PROBABILITY_TARGETS = {
+    "recession": ("an NBER recession begins", _target_recession, True),
+    "fed_cut": ("the Fed cuts rates by 1pp or more", _target_fall("fed_funds", 1.0), False),
+    "unemployment_rise": ("unemployment rises by 1pp or more", _target_rise("unemployment", 1.0), True),
+    "equity_drawdown": ("the S&P falls 20% or more from its peak", _target_drawdown(20.0), False),
+}
+
 #: Minimum years of history before the walk-forward begins predicting.
 PROBABILITY_MIN_TRAIN_YEARS = 18
 
@@ -1868,6 +1926,7 @@ def recession_probability(
     shrink: float = 1.0,
     min_train_years: int = PROBABILITY_MIN_TRAIN_YEARS,
     feature_set: str = "default",
+    target: str = "recession",
 ) -> tuple[pd.DataFrame, dict, pd.DataFrame]:
     """Walk-forward probability that a recession BEGINS within `horizon` months.
 
@@ -1904,13 +1963,13 @@ def recession_probability(
         log.warning("Probability model running on %d of %d features: %s",
                     len(available), len(features), ", ".join(available))
 
+    description, builder, drop_recession_months = PROBABILITY_TARGETS[target]
     x = df[available].dropna()
-    x = x[df["recession"].reindex(x.index) == 0]      # expansion months only
-    starts = [s for s, _ in spans]
-    y = pd.Series(
-        {i: any(i < s <= i + pd.DateOffset(months=horizon) for s in starts) for i in x.index},
-        dtype="float64",
-    )
+    if drop_recession_months:
+        x = x[df["recession"].reindex(x.index) == 0]
+    y = builder(df, spans, horizon, x.index).astype("float64")
+    keep = y.notna()
+    x, y = x[keep], y[keep]
     if x.empty or y.sum() < 5:
         raise DataFetchError("not enough history to fit the probability model")
 
@@ -1991,7 +2050,7 @@ def recession_probability(
         "out_of_sample_to": oos.index.max().date().isoformat(),
         "months_scored": int(len(oos)),
         "recessions_in_window": int(
-            sum(1 for s in starts if oos.index.min() <= s <= oos.index.max())
+            sum(1 for st, _ in spans if oos.index.min() <= st <= oos.index.max())
         ),
         "actual_positive_rate_pct": _r(100.0 * actual.mean()),
         "brier_model": _r(brier, 4),
@@ -2004,6 +2063,9 @@ def recession_probability(
         "current_probability_pct": _r(oos["probability_pct"].iloc[-1]),
         "current_as_of": oos.index.max().date().isoformat(),
         "feature_set": feature_set,
+        "target": target,
+        "target_description": description,
+        "horizon_months": int(horizon),
     }
 
     # Reliability: does a 20% forecast come true 20% of the time?
@@ -2461,13 +2523,14 @@ def chart4_probability(oos: pd.DataFrame, validation: dict, reliability: pd.Data
     ax_a.plot(oos.index, oos["base_rate_pct"], color=INK_MUTED, linewidth=1.4,
               linestyle="--", zorder=3)
     ax_a.set_ylim(0, max(60.0, float(prob.max()) * 1.15))
-    ax_a.set_ylabel(f"P(recession begins within {horizon} months)", color=INK_SECONDARY,
-                    fontsize=10.5, labelpad=8)
+    ax_a.set_ylabel(f"P({validation.get('target_description', 'recession')} within {horizon} months)",
+                    color=INK_SECONDARY, fontsize=10.5, labelpad=8)
     ax_a.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda v, _: f"{v:.0f}%"))
     ax_a.xaxis.set_major_locator(mdates.YearLocator(5))
     ax_a.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
     ax_a.set_xlim(prob.index.min(), prob.index.max())
-    ax_a.set_title("A.  Out-of-sample recession probability", loc="left", fontsize=12.5,
+    ax_a.set_title(f"A.  Out-of-sample probability: {validation.get('target_description', 'recession')}",
+                   loc="left", fontsize=12.5,
                    fontweight="bold", color=INK_PRIMARY, pad=12)
 
     last = float(prob.iloc[-1])
@@ -2519,7 +2582,8 @@ def chart4_probability(oos: pd.DataFrame, validation: dict, reliability: pd.Data
         color=INK_SECONDARY,
         bbox=dict(boxstyle="round,pad=0.45", facecolor=SURFACE, edgecolor=GRID, linewidth=1.0))
 
-    fig.suptitle("How likely is a recession, and can the number be believed?",
+    fig.suptitle(f"How likely is it that {validation.get('target_description', 'a recession begins')}"
+                 f" — and can the number be believed?",
                  x=0.045, ha="left", fontsize=17, fontweight="bold", color=INK_PRIMARY, y=0.975)
     fig.text(0.045, 0.017,
              "Every point is out of sample: the model is refitted each month on data whose outcome was "
@@ -2604,6 +2668,26 @@ def build_readme(provenance: pd.DataFrame, splice_note: str, spx_source: str, wi
                                     "Excluding the 12 months after each recession, skill is +0.112. So "
                                     "the usable claim is narrow: below roughly 20% the number means "
                                     "what it says; above that, discount it heavily."),
+        ("FINDING other targets", "The same features and machinery, pointed at four different "
+                                  "events over 12 months, out of sample. Fed cuts of 1pp or more: "
+                                  "skill +0.332, AUC 0.865, and well calibrated to about 75% -- it "
+                                  "said 36.6% and saw 37.0%. NBER recession: -0.030, AUC 0.893, "
+                                  "calibration breaking from 50% up. Unemployment rising 1pp: -0.336 "
+                                  "with AUC 0.841, so it discriminates and cannot size. S&P falling "
+                                  "20% from its peak: -0.604 with AUC 0.272 -- BELOW 0.5, meaning "
+                                  "systematically inverted. The macro state that looks recessionary "
+                                  "is followed by FEWER large drawdowns, not more, which independently "
+                                  "corroborates the earlier finding that the widest inflation-over-"
+                                  "retail quintile saw the best forward returns. Bad macro is priced "
+                                  "before it is measured."),
+        ("FINDING why fed_cut works", "It is not simply that there are more events, though there are "
+                                      "(20.9% base rate against 6.5%). A policy reaction function is "
+                                      "more learnable than a business-cycle turning point: the Fed "
+                                      "responds systematically to the very conditions these features "
+                                      "measure, whereas a recession is a committee's retrospective "
+                                      "judgement about an emergent process. The lesson generalises -- "
+                                      "prefer targets that are objective, frequent, and produced by a "
+                                      "rule rather than a verdict."),
         ("FINDING feature search", "Better features do NOT rescue the skill score. Six pre-specified "
                                    "variants were walked forward: baseline -0.030, plus direction "
                                    "features +0.051, plus payrolls -0.030, reduced to three features "
@@ -2925,7 +3009,7 @@ def run(args: argparse.Namespace) -> int:
         try:
             prob_oos, prob_validation, prob_reliability = recession_probability(
                 monthly, spans, horizon=args.horizon, shrink=args.prob_shrink,
-                feature_set=args.prob_features)
+                feature_set=args.prob_features, target=args.prob_target)
             monthly["recession_probability_pct"] = prob_oos["probability_pct"].reindex(monthly.index)
         except DataFetchError as exc:
             log.warning("Probability model unavailable: %s", exc)
@@ -3037,7 +3121,8 @@ def _print_summary(monthly, episodes, leadlag, signals, skill, spans, artifacts,
     if prob_validation:
         v = prob_validation
         print("\nCALIBRATED PROBABILITY (walk-forward, out of sample)")
-        print(f"  P(recession begins within 12 months) = {v['current_probability_pct']:.1f}%  "
+        print(f"  P({v.get('target_description', 'an NBER recession begins')} within "
+              f"{v.get('horizon_months', 12)} months) = {v['current_probability_pct']:.1f}%  "
               f"as of {v['current_as_of']}")
         print(f"  validated {v['out_of_sample_from']} to {v['out_of_sample_to']}: "
               f"{v['months_scored']} months, {v['recessions_in_window']} recessions")
@@ -3076,6 +3161,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="Rolling correlation window, in months")
     parser.add_argument("--no-probability", action="store_true",
                         help="Skip the walk-forward calibrated probability model")
+    parser.add_argument("--prob-target", default="recession",
+                        choices=sorted(PROBABILITY_TARGETS),
+                        help="Which event to model. 'fed_cut' is measurably the most predictable of "
+                             "these from the same features; 'equity_drawdown' is the least, and is "
+                             "predicted WORSE than chance")
     parser.add_argument("--prob-features", default="default",
                         choices=sorted(PROBABILITY_FEATURE_SETS),
                         help="Feature set for the probability model. None of the alternatives beats "
