@@ -700,6 +700,12 @@ def add_derived_metrics(monthly: pd.DataFrame) -> pd.DataFrame:
     if "claims" in df.columns:
         # Initial jobless claims, YoY. Rising claims lead payroll losses.
         df["claims_yoy"] = df["claims"].pct_change(12) * 100.0
+        # Short-horizon change, for the "direction" feature set: a level says
+        # how bad things are, a three-month change says which way they are
+        # moving. Only the second can distinguish a recovery from an approach.
+        df["claims_chg3"] = df["claims"].pct_change(3) * 100.0
+    if "nfci" in df.columns:
+        df["nfci_chg3"] = df["nfci"].diff(3)
 
     # --- NBER dating criteria ---------------------------------------------
     # These are what the committee weighs when it dates a cycle. They belong in
@@ -1780,6 +1786,18 @@ PROBABILITY_FEATURES = (
     "credit_spread_chg12",
 )
 
+#: Alternative feature sets, kept so the search that produced them is
+#: reproducible rather than a claim in a commit message. None of them improves
+#: the model in a way that survives scrutiny -- see FINDING feature search in
+#: the readme sheet. "direction" adds short-horizon changes to test whether the
+#: model can be taught to tell a deteriorating economy from a recovering one;
+#: "reduced" tests whether fewer parameters help on a small sample.
+PROBABILITY_FEATURE_SETS = {
+    "default": PROBABILITY_FEATURES,
+    "direction": PROBABILITY_FEATURES + ("claims_chg3", "nfci_chg3"),
+    "reduced": ("yield_curve", "nfci", "claims_yoy"),
+}
+
 #: Strong L2 shrinkage. With a few hundred rows and a handful of positive
 #: episodes, an unregularised fit separates the classes almost perfectly and
 #: emits probabilities near 0 and 1 that the data cannot support.
@@ -1849,6 +1867,7 @@ def recession_probability(
     lam: float = PROBABILITY_L2,
     shrink: float = 1.0,
     min_train_years: int = PROBABILITY_MIN_TRAIN_YEARS,
+    feature_set: str = "default",
 ) -> tuple[pd.DataFrame, dict, pd.DataFrame]:
     """Walk-forward probability that a recession BEGINS within `horizon` months.
 
@@ -1875,14 +1894,15 @@ def recession_probability(
     Left at 1.0 by default -- the untuned choice -- because selecting it on
     out-of-sample results is itself a form of fitting to the test set.
     """
-    available = [f for f in PROBABILITY_FEATURES if f in df.columns]
+    features = PROBABILITY_FEATURE_SETS.get(feature_set, PROBABILITY_FEATURES)
+    available = [f for f in features if f in df.columns]
     if len(available) < 3:
         raise DataFetchError(
-            f"probability model needs at least 3 of {PROBABILITY_FEATURES}, have {available}"
+            f"probability model needs at least 3 of {features}, have {available}"
         )
-    if len(available) < len(PROBABILITY_FEATURES):
+    if len(available) < len(features):
         log.warning("Probability model running on %d of %d features: %s",
-                    len(available), len(PROBABILITY_FEATURES), ", ".join(available))
+                    len(available), len(features), ", ".join(available))
 
     x = df[available].dropna()
     x = x[df["recession"].reindex(x.index) == 0]      # expansion months only
@@ -1983,6 +2003,7 @@ def recession_probability(
         "auc": _r(_auc(p), 3),
         "current_probability_pct": _r(oos["probability_pct"].iloc[-1]),
         "current_as_of": oos.index.max().date().isoformat(),
+        "feature_set": feature_set,
     }
 
     # Reliability: does a 20% forecast come true 20% of the time?
@@ -2583,6 +2604,22 @@ def build_readme(provenance: pd.DataFrame, splice_note: str, spx_source: str, wi
                                     "Excluding the 12 months after each recession, skill is +0.112. So "
                                     "the usable claim is narrow: below roughly 20% the number means "
                                     "what it says; above that, discount it heavily."),
+        ("FINDING feature search", "Better features do NOT rescue the skill score. Six pre-specified "
+                                   "variants were walked forward: baseline -0.030, plus direction "
+                                   "features +0.051, plus payrolls -0.030, reduced to three features "
+                                   "-0.091, plus lending standards -4.300 (its 1990 start truncates the "
+                                   "sample to 170 months with too few positives), direction features "
+                                   "alone -0.005 with AUC 0.531 -- levels carry all the discrimination, "
+                                   "changes carry none. The +0.051 variant looks like an improvement "
+                                   "and does not survive a mechanism check: it fixes exactly what it "
+                                   "was designed to fix, cutting mid-recovery false alarms from 80-85% "
+                                   "to 38-51% in late 2020, but makes every one of the model's worst "
+                                   "calls MORE confident -- spring 2023 from 89-94% to 94-97%, May 2020 "
+                                   "from 95% to 98%. A better average bought with worse tails is the "
+                                   "wrong trade for a probability anyone would act on, so the default "
+                                   "is unchanged. Across every variant the overall skill stays within "
+                                   "-0.09 to +0.05, which three out-of-sample recessions cannot "
+                                   "distinguish. Features are not the binding constraint."),
         ("CAVEAT probability layers", "Raw logistic output scored -0.243 -- worse than the base rate, "
                                       "saying 77% where the truth was 41%. A nested Platt calibration "
                                       "fitted strictly inside the training window is what makes it "
@@ -2887,7 +2924,8 @@ def run(args: argparse.Namespace) -> int:
         log.info("Fitting walk-forward recession probability ...")
         try:
             prob_oos, prob_validation, prob_reliability = recession_probability(
-                monthly, spans, horizon=args.horizon, shrink=args.prob_shrink)
+                monthly, spans, horizon=args.horizon, shrink=args.prob_shrink,
+                feature_set=args.prob_features)
             monthly["recession_probability_pct"] = prob_oos["probability_pct"].reindex(monthly.index)
         except DataFetchError as exc:
             log.warning("Probability model unavailable: %s", exc)
@@ -3038,6 +3076,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="Rolling correlation window, in months")
     parser.add_argument("--no-probability", action="store_true",
                         help="Skip the walk-forward calibrated probability model")
+    parser.add_argument("--prob-features", default="default",
+                        choices=sorted(PROBABILITY_FEATURE_SETS),
+                        help="Feature set for the probability model. None of the alternatives beats "
+                             "the default once their tail behaviour is examined; they exist so the "
+                             "comparison is reproducible")
     parser.add_argument("--prob-shrink", type=float, default=1.0, metavar="A",
                         help="Blend the calibrated probability toward the base rate: "
                              "A*p + (1-A)*base. 1.0 leaves it untouched")
