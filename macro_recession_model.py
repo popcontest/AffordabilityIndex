@@ -156,6 +156,8 @@ FRED_INDICATORS = {
     "oecd_recession": ("OECDRECDM", "mean"),    # OECD-wide recession indicator (discontinued 2022)
     "ecb_assets": ("ECBASSETSW", "mean"),       # ECB total assets, 1999->
     "boj_assets": ("JPNASSETS", "mean"),        # Bank of Japan total assets, 1998->
+    "china_exports": ("XTEXVA01CNM667S", "mean"),  # China exports, value, 1992->
+    "copper": ("PCOPPUSDM", "mean"),            # copper price, a China-demand proxy, 1992->
 }
 
 #: Yahoo tickers tried in order. ^SPX is the requested symbol; ^GSPC is the
@@ -733,6 +735,10 @@ def add_derived_metrics(monthly: pd.DataFrame) -> pd.DataFrame:
     # catches episodes the domestic signal misses.
     if {"de_10y", "de_3m"} <= set(df.columns):
         df["german_yield_curve"] = df["de_10y"] - df["de_3m"]
+    if "china_exports" in df.columns:
+        df["china_exports_yoy"] = df["china_exports"].pct_change(12) * 100.0
+    if "copper" in df.columns:
+        df["copper_yoy"] = df["copper"].pct_change(12) * 100.0
     if "ecb_assets" in df.columns:
         df["ecb_assets_yoy"] = df["ecb_assets"].pct_change(12) * 100.0
     if "boj_assets" in df.columns:
@@ -1145,6 +1151,34 @@ SIGNAL_DEFS: list[dict] = [
                 "through channels the US curve alone does not price.",
     },
     {
+        "name": "Copper price falling",
+        "short": "Copper price",
+        "column": "copper_yoy",
+        "kind": "coincident",
+        "condition": "< -20% YoY",
+        "fires": lambda v: v < -20.0,
+        "note": "'Dr. Copper' is not a leading indicator. At the -20% threshold it scores 4.57x "
+                "coincident and 0.00x leading on 0 of 8 episodes; at -10%, 2.16x and 0.21x. Copper "
+                "falls WITH the downturn, not ahead of it -- the same shape as the S&P drawdown "
+                "result. Shipped as a documented negative because it is among the most widely cited "
+                "global-growth signals.",
+    },
+    {
+        "name": "China exports falling",
+        "short": "China exports YoY",
+        "column": "china_exports_yoy",
+        "kind": "coincident",
+        "condition": "< 0%",
+        "fires": lambda v: v < 0,
+        "note": "The direct read on Chinese demand, and a clean null: 0.99x leading, which is "
+                "exactly no information, on 2 of 13 episodes. Nothing in the China block scored -- "
+                "China imports 0.99x, China CPI deflation 0.18x, the yuan 0.98x, and a Chinese "
+                "recession 1.12x against the UK's 2.14x despite China being far the larger economy. "
+                "Two caveats bound all of it: every China series starts in the 1990s and so covers "
+                "only three US recessions, and China only became macro-significant to the US after "
+                "2001. This is weak evidence of absence, not proof.",
+    },
+    {
         "name": "UK recession under way",
         "short": "UK recession",
         "column": "uk_recession",
@@ -1447,6 +1481,8 @@ SIGNAL_SOURCE_LEVELS = {
     "uk_recession": ("uk_recession",),
     "oecd_recession": ("oecd_recession",),
     "ecb_assets_yoy": ("ecb_assets",),
+    "china_exports_yoy": ("china_exports",),
+    "copper_yoy": ("copper",),
     "boj_assets_yoy": ("boj_assets",),
     "household_debt_yoy": ("household_debt",),
     "net_worth_dpi_yoy": ("net_worth_dpi",),
@@ -2238,6 +2274,15 @@ def build_readme(provenance: pd.DataFrame, splice_note: str, spx_source: str, wi
                               "goes from 67.2% precision to 0.0%; real M2 from 77.8% to 1.1%; the policy "
                               "composite, top of the pooled table, from 72.7% to 0.0%. Soft landings "
                               "are a modern phenomenon and the monetary signals do not survive them."),
+        ("FINDING China", "No Chinese signal earns a place. China exports 0.99x, China imports "
+                          "0.99x, China CPI deflation 0.18x, the yuan 0.98x, US imports from China "
+                          "1.45x on 2 of 13 episodes, and a Chinese recession 1.12x against the UK "
+                          "indicator's 2.14x -- despite China being far the larger economy. Copper, "
+                          "the usual China-demand proxy, is purely coincident: 4.57x coincident and "
+                          "0.00x leading on 0 of 8 episodes at -20% YoY. Bounding all of it: every "
+                          "China series begins in the 1990s and covers only three US recessions, and "
+                          "China became macro-significant to the US only after 2001. Weak evidence "
+                          "of absence rather than evidence of absence."),
         ("FINDING fiscal policy", "No fiscal aggregate carries leading information. Deficit widening "
                                   "scores 0.17x, deficit consolidation 0.78x, real government spending "
                                   "falling 0.53x, a deficit worse than 5% of GDP 0.00x on 0 of 8 "
