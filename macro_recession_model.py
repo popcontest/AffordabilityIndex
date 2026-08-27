@@ -1857,6 +1857,14 @@ def _target_fall(column, points):
 PROBABILITY_TARGETS = {
     "recession": ("an NBER recession begins", _target_recession, True),
     "fed_cut": ("the Fed cuts rates by 1pp or more", _target_fall("fed_funds", 1.0), False),
+    # Matched to how rate contracts are actually written -- "any cut" and "any
+    # hike" rather than a cumulative move. The cut targets are well
+    # discriminated (AUC 0.74-0.87); the hike target is NOT (AUC ~0.62). Hikes
+    # depend on the inflation outlook, guidance and who chairs the committee,
+    # none of which is in this feature set, so treat a hike reading as a weak
+    # prior rather than a forecast.
+    "fed_cut_any": ("the Fed cuts rates at all", _target_fall("fed_funds", 0.25), False),
+    "fed_hike": ("the Fed hikes rates at all", _target_rise("fed_funds", 0.25), False),
     "unemployment_rise": ("unemployment rises by 1pp or more", _target_rise("unemployment", 1.0), True),
     "equity_drawdown": ("the S&P falls 20% or more from its peak", _target_drawdown(20.0), False),
 }
@@ -2680,6 +2688,19 @@ def build_readme(provenance: pd.DataFrame, splice_note: str, spx_source: str, wi
                                   "corroborates the earlier finding that the widest inflation-over-"
                                   "retail quintile saw the best forward returns. Bad macro is priced "
                                   "before it is measured."),
+        ("FINDING vs market prices", "Checked against live Kalshi Fed contracts, Aug 2026. On CUTS "
+                                    "the model independently reproduces the market: it puts ~11% on a "
+                                    "cut before 2027 (9.6% at 4 months, 12.8% at 6) against the "
+                                    "market's 11%, and the market's 'exactly 0 cuts in 2026' at 88% "
+                                    "implies the same 12%. Two unrelated methods agreeing is worth "
+                                    "more than either alone, and it means no edge. On HIKES they "
+                                    "diverge hard -- model ~22% before 2027 against the market's 60% "
+                                    "-- and the model is the weaker party: hike AUC is 0.62 against "
+                                    "0.74-0.87 for cuts, and hikes turn on the inflation outlook, "
+                                    "forward guidance and who chairs the committee, none of which is "
+                                    "in this feature set. A large disagreement where you hold less "
+                                    "information than the counterparty is not an edge, it is a "
+                                    "warning."),
         ("FINDING why fed_cut works", "It is not simply that there are more events, though there are "
                                       "(20.9% base rate against 6.5%). A policy reaction function is "
                                       "more learnable than a business-cycle turning point: the Fed "
