@@ -143,6 +143,7 @@ FRED_INDICATORS = {
     "fed_receipts": ("FGRECPT", "mean"),        # federal current receipts, quarterly, 1947->
     "fed_outlays": ("FGEXPND", "mean"),         # federal current expenditures, quarterly, 1947->
     "nominal_gdp": ("GDP", "mean"),             # nominal GDP, quarterly, 1947->
+    "real_gdp": ("GDPC1", "mean"),              # real GDP, quarterly, 1947-> (nowcast target)
     "govt_spending": ("GCEC1", "mean"),         # real govt consumption + investment, quarterly, 1947->
     # --- External sector ---
     "net_exports_pct_gdp": ("A019RE1Q156NBEA", "mean"),  # net exports as % of GDP, quarterly, 1947->
@@ -2205,6 +2206,142 @@ def recession_probability(
 
 
 # ---------------------------------------------------------------------------
+# GDP nowcaster
+# ---------------------------------------------------------------------------
+
+#: Monthly inputs to the nowcast. These are deliberately the series that FAILED
+#: as leading indicators -- industrial production 0.96x, payrolls 0.65x, real
+#: income ex-transfers 0.27x, manufacturing and trade sales 2.19x. A coincident
+#: series is bad at saying what comes next and excellent at saying what is
+#: happening now, which is the whole job here.
+NOWCAST_INPUTS = ("indpro", "payrolls", "income_ex_transfers", "mfg_trade_sales")
+
+#: Candidate ridge penalties. The right one falls as the quarter fills up: with
+#: one noisy month you must shrink hard, with three the data can speak. Chosen
+#: per step inside the training window rather than fixed, so the choice never
+#: sees the observation it is scored on.
+NOWCAST_LAMBDAS = (10.0, 50.0, 200.0, 1000.0, 5000.0)
+
+
+def _ridge(x: np.ndarray, y: np.ndarray, lam: float):
+    """Ridge regression with an unpenalised intercept, on standardised inputs."""
+    mu, sd = x.mean(axis=0), x.std(axis=0)
+    sd = np.where(sd < 1e-9, 1.0, sd)
+    z = np.column_stack([np.ones(len(x)), (x - mu) / sd])
+    penalty = np.eye(z.shape[1]) * lam
+    penalty[0, 0] = 0.0
+    return np.linalg.solve(z.T @ z + penalty, z.T @ y), mu, sd
+
+
+def _ridge_predict(model, x: np.ndarray) -> np.ndarray:
+    w, mu, sd = model
+    return np.column_stack([np.ones(len(x)), (x - mu) / sd]) @ w
+
+
+def nowcast_gdp(df: pd.DataFrame, months_available: int = 3) -> tuple[pd.DataFrame, dict]:
+    """Nowcast the CURRENT quarter's real GDP growth, before it is published.
+
+    A different problem from the rest of this model, and a much better-posed
+    one. Forecasting asks what happens next and gets 15 events in a century to
+    learn from. Nowcasting asks what is happening right now -- real GDP is not
+    published until roughly a month after the quarter ends -- and every quarter
+    since 1947 is a training example. Hundreds of observations of a continuous
+    target instead of a handful of rare binary ones.
+
+    `months_available` sets how far into the quarter the estimate is made,
+    which is the ragged edge every nowcast has to face: month 1 of a quarter is
+    published in month 2, so an estimate made with one month of data is
+    genuinely available six weeks before the advance GDP estimate.
+
+    Validation is walk-forward: each quarter is predicted by a model fitted only
+    on quarters whose GDP had already been published. The ridge penalty is
+    chosen at each step on an inner split of that training window, so the
+    hyperparameter never sees the quarter being scored.
+    """
+    available = [c for c in NOWCAST_INPUTS if c in df.columns]
+    if len(available) < 3 or "real_gdp" not in df.columns:
+        raise DataFetchError(
+            f"nowcaster needs real_gdp plus 3 of {NOWCAST_INPUTS}, have {available}"
+        )
+
+    # Drop the forward-fill before anything else. Quarterly GDP is carried
+    # across the months of the monthly frame, so the tail of the series repeats
+    # the last real print -- and taking one row per quarter from that would
+    # manufacture a phantom quarter whose "actual" growth is zero by
+    # construction, then score the nowcast against it. Keeping only rows where
+    # the level actually moved removes the repeats; real GDP never prints the
+    # same number twice running.
+    gdp = df["real_gdp"].dropna()
+    gdp = gdp[gdp.ne(gdp.shift())]
+    gdp = gdp[~gdp.index.to_period("Q").duplicated(keep="first")]
+    gdp.index = gdp.index.to_period("Q")
+    target = ((gdp / gdp.shift(1)) ** 4 - 1) * 100.0      # annualised QoQ growth
+
+    monthly = df[available].copy()
+    growth = monthly.pct_change() * 100.0
+    growth["quarter"] = growth.index.to_period("Q")
+    growth["month_in_quarter"] = ((growth.index.month - 1) % 3) + 1
+
+    used = growth[growth["month_in_quarter"] <= months_available]
+    x = used.groupby("quarter")[available].mean()
+    x["last_published_gdp"] = target.shift(1).reindex(x.index)
+    x = x.replace([np.inf, -np.inf], np.nan).dropna()
+
+    y = target.reindex(x.index).dropna()
+    x = x.reindex(y.index)
+    if len(x) < 80:
+        raise DataFetchError(f"nowcaster needs at least 80 quarters, have {len(x)}")
+
+    min_train = 60
+    rows = []
+    for i in range(min_train, len(x)):
+        x_tr, y_tr = x.iloc[:i].values, y.iloc[:i].values
+
+        # Inner split to pick the penalty, entirely inside the training window.
+        cut = int(len(x_tr) * 0.75)
+        best_lam, best_err = NOWCAST_LAMBDAS[0], np.inf
+        for lam in NOWCAST_LAMBDAS:
+            model = _ridge(x_tr[:cut], y_tr[:cut], lam)
+            err = float(np.mean((_ridge_predict(model, x_tr[cut:]) - y_tr[cut:]) ** 2))
+            if err < best_err:
+                best_lam, best_err = lam, err
+
+        model = _ridge(x_tr, y_tr, best_lam)
+        rows.append(
+            {
+                "quarter": str(x.index[i]),
+                "nowcast_pct": _r(float(_ridge_predict(model, x.iloc[[i]].values)[0])),
+                "actual_pct": _r(float(y.iloc[i])),
+                "mean_benchmark_pct": _r(float(y_tr.mean())),
+                "lambda_chosen": best_lam,
+            }
+        )
+
+    oos = pd.DataFrame(rows).set_index("quarter")
+    pred = oos["nowcast_pct"].to_numpy()
+    actual = oos["actual_pct"].to_numpy()
+    bench = oos["mean_benchmark_pct"].to_numpy()
+
+    def _rmse(a):
+        return float(np.sqrt(np.mean((a - actual) ** 2)))
+
+    validation = {
+        "months_of_quarter_used": months_available,
+        "quarters_scored": int(len(oos)),
+        "out_of_sample_from": oos.index[0],
+        "out_of_sample_to": oos.index[-1],
+        "rmse_nowcast": _r(_rmse(pred), 3),
+        "rmse_mean_benchmark": _r(_rmse(bench), 3),
+        "r2_vs_mean_benchmark": _r(1 - np.mean((pred - actual) ** 2) / np.mean((bench - actual) ** 2), 3),
+        "correlation_with_actual": _r(float(np.corrcoef(pred, actual)[0, 1]), 3),
+        "mean_absolute_error": _r(float(np.mean(np.abs(pred - actual))), 3),
+        "current_nowcast_pct": _r(float(pred[-1])),
+        "current_quarter": oos.index[-1],
+    }
+    return oos, validation
+
+
+# ---------------------------------------------------------------------------
 # Charts
 # ---------------------------------------------------------------------------
 
@@ -2716,6 +2853,83 @@ def chart4_probability(oos: pd.DataFrame, validation: dict, reliability: pd.Data
     return outpath
 
 
+def chart5_nowcast(oos: pd.DataFrame, validation: dict, spans, outpath: Path, dpi: int) -> Path:
+    """Chart 5 -- the nowcast against what GDP turned out to be.
+
+    Panel A tracks both through time; panel B is the scatter that shows whether
+    the relationship is a line or a cloud. The diagonal is a perfect nowcast.
+    """
+    fig, (ax_a, ax_b) = plt.subplots(
+        1, 2, figsize=(16, 7.0), gridspec_kw={"width_ratios": [1.6, 1.0], "wspace": 0.26}
+    )
+    fig.patch.set_facecolor(SURFACE)
+
+    dates = pd.PeriodIndex(oos.index, freq="Q").to_timestamp()
+    actual, pred = oos["actual_pct"], oos["nowcast_pct"]
+
+    _style_axes(ax_a)
+    _shade_recessions(ax_a, spans)
+    ax_a.axhline(0, color=ZERO_LINE, linewidth=1.1, zorder=1)
+    ax_a.plot(dates, actual.values, color=INK_SECONDARY, linewidth=2.2, zorder=3, label="Actual real GDP growth")
+    ax_a.plot(dates, pred.values, color=C_RETAIL, linewidth=2.0, zorder=4, label="Nowcast")
+    lo, hi = _robust_limits(pd.concat([actual, pred]), q=0.01, step=5.0)[:2]
+    if lo is not None:
+        ax_a.set_ylim(lo, hi)
+    ax_a.set_ylabel("Real GDP growth, QoQ annualised (%)", color=INK_SECONDARY, fontsize=10.5, labelpad=8)
+    ax_a.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda v, _: f"{v:+.0f}%"))
+    ax_a.xaxis.set_major_locator(mdates.YearLocator(5))
+    ax_a.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
+    ax_a.set_xlim(dates.min(), dates.max())
+    ax_a.set_title(f"A.  Nowcast vs outturn, using {validation['months_of_quarter_used']} month(s) of the quarter",
+                   loc="left", fontsize=12.5, fontweight="bold", color=INK_PRIMARY, pad=12)
+    handles = [
+        Line2D([], [], color=INK_SECONDARY, linewidth=2.4, label="Actual real GDP growth"),
+        Line2D([], [], color=C_RETAIL, linewidth=2.4, label="Nowcast (walk-forward)"),
+        Patch(facecolor=C_RECESSION, alpha=0.18, label="NBER recession"),
+    ]
+    leg = ax_a.legend(handles=handles, loc="upper left", bbox_to_anchor=(0.0, -0.07), frameon=True,
+                      fontsize=9.5, ncol=3, borderpad=0.6, framealpha=1.0)
+    leg.get_frame().set_facecolor(SURFACE)
+    leg.get_frame().set_edgecolor(GRID)
+    for t in leg.get_texts():
+        t.set_color(INK_SECONDARY)
+
+    _style_axes(ax_b)
+    lim = [min(actual.min(), pred.min()) - 1, max(actual.max(), pred.max()) + 1]
+    ax_b.plot(lim, lim, color=INK_PRIMARY, linewidth=1.6, linestyle="--", alpha=0.75, zorder=2)
+    ax_b.axhline(0, color=ZERO_LINE, linewidth=1.0, zorder=1)
+    ax_b.axvline(0, color=ZERO_LINE, linewidth=1.0, zorder=1)
+    ax_b.scatter(pred, actual, s=26, facecolor=C_RETAIL, edgecolor=SURFACE, linewidth=0.6,
+                 alpha=0.7, zorder=4)
+    ax_b.set_xlim(lim); ax_b.set_ylim(lim)
+    ax_b.set_xlabel("Nowcast (%)", color=INK_SECONDARY, fontsize=10.5, labelpad=8)
+    ax_b.set_ylabel("Actual (%)", color=INK_SECONDARY, fontsize=10.5, labelpad=8)
+    for axis in (ax_b.xaxis, ax_b.yaxis):
+        axis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda v, _: f"{v:+.0f}%"))
+    ax_b.set_title("B.  On the diagonal is a perfect nowcast", loc="left", fontsize=12.5,
+                   fontweight="bold", color=INK_PRIMARY, pad=12)
+    ax_b.annotate(
+        f"R² vs mean benchmark  {validation['r2_vs_mean_benchmark']:.3f}\n"
+        f"RMSE {validation['rmse_nowcast']:.2f}pp  vs  {validation['rmse_mean_benchmark']:.2f}pp\n"
+        f"correlation {validation['correlation_with_actual']:.2f}   "
+        f"{validation['quarters_scored']} quarters",
+        xy=(0.03, 0.97), xycoords="axes fraction", ha="left", va="top", fontsize=9.5,
+        color=INK_SECONDARY,
+        bbox=dict(boxstyle="round,pad=0.45", facecolor=SURFACE, edgecolor=GRID, linewidth=1.0))
+
+    fig.suptitle("What is the economy doing right now?", x=0.045, ha="left", fontsize=17,
+                 fontweight="bold", color=INK_PRIMARY, y=0.975)
+    fig.text(0.045, 0.017,
+             "Real GDP is published about a month after the quarter ends. Every point is out of sample, "
+             "from a model refitted on quarters already published. Sources: FRED.",
+             fontsize=8.5, color=INK_MUTED, ha="left")
+    fig.subplots_adjust(left=0.055, right=0.975, top=0.855, bottom=0.175, wspace=0.26)
+    fig.savefig(outpath, dpi=dpi, facecolor=SURFACE)
+    plt.close(fig)
+    log.info("Wrote %s", outpath)
+    return outpath
+
+
 # ---------------------------------------------------------------------------
 # Excel export
 # ---------------------------------------------------------------------------
@@ -2770,6 +2984,29 @@ def build_readme(provenance: pd.DataFrame, splice_note: str, spx_source: str, wi
         ("SHEET: monthly_merged", "Analysis frequency. One row per month, month-start stamped."),
         ("SHEET: daily_merged", "Business-day spine with monthly macro series forward-filled onto it."),
         ("SHEET: recession_episodes", "One row per NBER contraction with market and retail behaviour."),
+        ("SHEET: nowcast_oos", "Walk-forward nowcast of the CURRENT quarter's real GDP growth, "
+                               "before it is published. Every row out of sample."),
+        ("SHEET: nowcast_validation", "RMSE against the mean benchmark, R2, correlation."),
+        ("FINDING the nowcast", "This is the best-performing model in the file, and the contrast with "
+                                "the recession work is the point. Using all three months of a quarter: "
+                                "RMSE 2.59pp against 4.21pp for the mean benchmark, R2 +0.622, "
+                                "correlation 0.82 with the outturn, over 178 quarters. Two months in, "
+                                "R2 is +0.468. One month in it is worthless -- R2 -0.044, no better "
+                                "than quoting the average. The inputs are precisely the series that "
+                                "FAILED as leading indicators: industrial production 0.96x, payrolls "
+                                "0.65x, real income ex-transfers 0.27x. A coincident series is bad at "
+                                "saying what comes next and excellent at saying what is happening now, "
+                                "and matching the series to the question matters more than the choice "
+                                "of model."),
+        ("FINDING why nowcasting works", "It is not that the method is better. It is that the problem "
+                                         "is better posed. Forecasting recessions offers 15 events in a "
+                                         "century and 3 out of sample; nowcasting offers 178 quarters "
+                                         "of a continuous target. Same walk-forward discipline, same "
+                                         "hand-rolled regression, R2 +0.622 instead of a Brier skill of "
+                                         "-0.030. Where a model sits on the spectrum from 'rare binary "
+                                         "event, far ahead' to 'continuous quantity, right now' "
+                                         "predicts its usefulness better than any feature choice made "
+                                         "anywhere in this project."),
         ("SHEET: probability_oos", "Walk-forward P(recession begins within the horizon). Every row "
                                    "is out of sample -- the model is refitted each month on rows whose "
                                    "outcome was already observable."),
@@ -3199,6 +3436,14 @@ def run(args: argparse.Namespace) -> int:
     corr = correlation_matrix(monthly)
     skill = evaluate_signal_skill(monthly, spans, horizon=args.horizon)
 
+    now_oos, now_validation = None, {}
+    if not args.no_nowcast:
+        log.info("Fitting walk-forward GDP nowcaster ...")
+        try:
+            now_oos, now_validation = nowcast_gdp(monthly, months_available=args.nowcast_months)
+        except DataFetchError as exc:
+            log.warning("Nowcaster unavailable: %s", exc)
+
     prob_oos, prob_validation, prob_reliability = None, {}, None
     if not args.no_probability:
         log.info("Fitting walk-forward recession probability ...")
@@ -3222,6 +3467,9 @@ def run(args: argparse.Namespace) -> int:
     if not skill.empty:
         charts.append(chart3_signal_skill(monthly, skill, spans,
                                           outdir / "chart3_signal_skill.png", args.dpi, args.horizon))
+    if now_oos is not None and not now_oos.empty:
+        charts.append(chart5_nowcast(now_oos, now_validation, spans,
+                                     outdir / "chart5_nowcast.png", args.dpi))
     if prob_oos is not None and not prob_oos.empty:
         charts.append(chart4_probability(prob_oos, prob_validation, prob_reliability, spans,
                                          outdir / "chart4_probability.png", args.dpi, args.horizon))
@@ -3251,18 +3499,22 @@ def run(args: argparse.Namespace) -> int:
                 [{"metric": k, "value": v} for k, v in prob_validation.items()]
             ) if prob_validation else None,
             "probability_reliability": prob_reliability,
+            "nowcast_oos": now_oos.reset_index() if now_oos is not None else None,
+            "nowcast_validation": pd.DataFrame(
+                [{"metric": k, "value": v} for k, v in now_validation.items()]
+            ) if now_validation else None,
             "current_signals": signals,
         },
     )
 
     # ----- 6. Console summary ---------------------------------------------
     _print_summary(monthly, episodes, leadlag, signals, skill, spans, [xlsx, *charts],
-                   prob_validation, prob_reliability)
+                   prob_validation, prob_reliability, now_validation)
     return 0
 
 
 def _print_summary(monthly, episodes, leadlag, signals, skill, spans, artifacts,
-                   prob_validation=None, prob_reliability=None) -> None:
+                   prob_validation=None, prob_reliability=None, now_validation=None) -> None:
     line = "=" * 78
     print(f"\n{line}\nMACRO RECESSION MODEL\n{line}")
     print(f"Sample window     : {monthly.index.min():%b %Y} – {monthly.index.max():%b %Y} "
@@ -3338,6 +3590,17 @@ def _print_summary(monthly, episodes, leadlag, signals, skill, spans, artifacts,
                 print(f"    said {r['mean_forecast_pct']:5.1f}%  ->  actual {r['actual_rate_pct']:5.1f}%"
                       f"   ({int(r['months'])} months)")
 
+    if now_validation:
+        v = now_validation
+        print("\nGDP NOWCAST (walk-forward, out of sample)")
+        print(f"  current quarter {v['current_quarter']}: real GDP growing {v['current_nowcast_pct']:+.2f}% "
+              f"annualised, using {v['months_of_quarter_used']} month(s) of data")
+        print(f"  RMSE {v['rmse_nowcast']:.2f}pp vs {v['rmse_mean_benchmark']:.2f}pp for the mean benchmark"
+              f"  ->  R2 {v['r2_vs_mean_benchmark']:+.3f}")
+        print(f"  correlation with outturn {v['correlation_with_actual']:.2f}, "
+              f"mean absolute error {v['mean_absolute_error']:.2f}pp, "
+              f"{v['quarters_scored']} quarters {v['out_of_sample_from']}..{v['out_of_sample_to']}")
+
     print("\nArtifacts:")
     for path in artifacts:
         print(f"  {path}")
@@ -3355,6 +3618,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="Earliest date requested from the APIs (providers return their full history from here)")
     parser.add_argument("--rolling-window", type=int, default=DEFAULT_ROLLING_WINDOW,
                         help="Rolling correlation window, in months")
+    parser.add_argument("--no-nowcast", action="store_true",
+                        help="Skip the current-quarter GDP nowcaster")
+    parser.add_argument("--nowcast-months", type=int, default=3, choices=[1, 2, 3],
+                        help="How many months of the quarter the nowcast may use. 1 is available "
+                             "earliest and is much the weakest")
     parser.add_argument("--no-probability", action="store_true",
                         help="Skip the walk-forward calibrated probability model")
     parser.add_argument("--prob-target", default="recession",
