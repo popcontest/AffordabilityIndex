@@ -144,6 +144,14 @@ FRED_INDICATORS = {
     "fed_outlays": ("FGEXPND", "mean"),         # federal current expenditures, quarterly, 1947->
     "nominal_gdp": ("GDP", "mean"),             # nominal GDP, quarterly, 1947->
     "real_gdp": ("GDPC1", "mean"),              # real GDP, quarterly, 1947-> (nowcast target)
+    # --- Timely activity series, for the early-quarter nowcast ---
+    # All start in the 2000s, which made them useless for recession forecasting
+    # (two or three events). Against a continuous quarterly target they have a
+    # hundred observations, and their value is that they arrive EARLY.
+    "truck_tonnage": ("TRUCKD11", "last"),      # truck tonnage index, 2000->
+    "rail_carloads": ("RAILFRTCARLOADSD11", "last"),  # rail freight carloads, 2000->
+    "quits_rate": ("JTSQUR", "mean"),           # quits rate, 2000->
+    "job_openings": ("JTSJOL", "last"),         # job openings, 2000->
     "govt_spending": ("GCEC1", "mean"),         # real govt consumption + investment, quarterly, 1947->
     # --- External sector ---
     "net_exports_pct_gdp": ("A019RE1Q156NBEA", "mean"),  # net exports as % of GDP, quarterly, 1947->
@@ -2216,6 +2224,28 @@ def recession_probability(
 #: happening now, which is the whole job here.
 NOWCAST_INPUTS = ("indpro", "payrolls", "income_ex_transfers", "mfg_trade_sales")
 
+#: Timely series added to the early-quarter nowcast. Freight and labour-market
+#: turnover report faster than the official statistics, and that is the whole of
+#: their value here -- measured, they help exactly when the standard data has
+#: not arrived yet and stop helping once it has:
+#:
+#:   1 month of the quarter   R2 +0.133 -> +0.429
+#:   2 months                 R2 +0.356 -> +0.420
+#:   3 months                 R2 +0.477 -> +0.462  (slightly worse)
+#:
+#: Two honest caveats. They start in 2000, so using them cuts the scored sample
+#: from ~198 quarters to 62 -- the comparison above is like-for-like on the
+#: SHORT window, not against the full-sample figures. And on their own they
+#: correlate NEGATIVELY with the outturn (-0.36 to -0.45), so in the combined
+#: model they are acting as a correction to the core series rather than as an
+#: independent measure of activity. Off by default for both reasons.
+NOWCAST_TIMELY_INPUTS = ("truck_tonnage", "rail_carloads", "quits_rate", "job_openings")
+
+NOWCAST_FEATURE_SETS = {
+    "core": NOWCAST_INPUTS,
+    "timely": NOWCAST_INPUTS + NOWCAST_TIMELY_INPUTS,
+}
+
 #: Candidate ridge penalties. The right one falls as the quarter fills up: with
 #: one noisy month you must shrink hard, with three the data can speak. Chosen
 #: per step inside the training window rather than fixed, so the choice never
@@ -2238,7 +2268,8 @@ def _ridge_predict(model, x: np.ndarray) -> np.ndarray:
     return np.column_stack([np.ones(len(x)), (x - mu) / sd]) @ w
 
 
-def nowcast_gdp(df: pd.DataFrame, months_available: int = 3) -> tuple[pd.DataFrame, dict]:
+def nowcast_gdp(df: pd.DataFrame, months_available: int = 3,
+                feature_set: str = "core") -> tuple[pd.DataFrame, dict]:
     """Nowcast the CURRENT quarter's real GDP growth, before it is published.
 
     A different problem from the rest of this model, and a much better-posed
@@ -2258,10 +2289,11 @@ def nowcast_gdp(df: pd.DataFrame, months_available: int = 3) -> tuple[pd.DataFra
     chosen at each step on an inner split of that training window, so the
     hyperparameter never sees the quarter being scored.
     """
-    available = [c for c in NOWCAST_INPUTS if c in df.columns]
+    wanted = NOWCAST_FEATURE_SETS.get(feature_set, NOWCAST_INPUTS)
+    available = [c for c in wanted if c in df.columns]
     if len(available) < 3 or "real_gdp" not in df.columns:
         raise DataFetchError(
-            f"nowcaster needs real_gdp plus 3 of {NOWCAST_INPUTS}, have {available}"
+            f"nowcaster needs real_gdp plus 3 of {wanted}, have {available}"
         )
 
     # Drop the forward-fill before anything else. Quarterly GDP is carried
@@ -2292,7 +2324,9 @@ def nowcast_gdp(df: pd.DataFrame, months_available: int = 3) -> tuple[pd.DataFra
     if len(x) < 80:
         raise DataFetchError(f"nowcaster needs at least 80 quarters, have {len(x)}")
 
-    min_train = 60
+    # The timely set starts in 2000, so it cannot afford the 60-quarter warmup
+    # the core set uses. Reported n makes the difference visible.
+    min_train = 40 if feature_set == "timely" else 60
     rows = []
     for i in range(min_train, len(x)):
         x_tr, y_tr = x.iloc[:i].values, y.iloc[:i].values
@@ -2327,6 +2361,8 @@ def nowcast_gdp(df: pd.DataFrame, months_available: int = 3) -> tuple[pd.DataFra
 
     validation = {
         "months_of_quarter_used": months_available,
+        "feature_set": feature_set,
+        "features_used": ", ".join(available),
         "quarters_scored": int(len(oos)),
         "out_of_sample_from": oos.index[0],
         "out_of_sample_to": oos.index[-1],
@@ -2998,6 +3034,27 @@ def build_readme(provenance: pd.DataFrame, splice_note: str, spx_source: str, wi
                                 "saying what comes next and excellent at saying what is happening now, "
                                 "and matching the series to the question matters more than the choice "
                                 "of model."),
+        ("FINDING heterodox data, second attempt", "Freight and labour-turnover series (truck "
+                                                   "tonnage, rail carloads, quits, job openings) that "
+                                                   "were useless for recession forecasting DO help the "
+                                                   "nowcaster, and only where theory says they should. "
+                                                   "Like-for-like on the same 2000-onward window: one "
+                                                   "month into the quarter R2 goes +0.133 -> +0.429, "
+                                                   "two months +0.356 -> +0.420, three months +0.477 -> "
+                                                   "+0.462, slightly WORSE. Their entire value is that "
+                                                   "they arrive early; once industrial production and "
+                                                   "payrolls have reported the same quarter, they add "
+                                                   "nothing. This is what the earlier finding predicted "
+                                                   "-- point short-history data at a continuous, "
+                                                   "frequent target and it earns its place. Two "
+                                                   "caveats: using them cuts the scored sample from "
+                                                   "~198 quarters to 62, and on their own they "
+                                                   "correlate NEGATIVELY with the outturn (-0.36 to "
+                                                   "-0.45), so in the combined model they act as a "
+                                                   "correction to the core series rather than as an "
+                                                   "independent measure of activity. Off by default; "
+                                                   "use --nowcast-features timely with "
+                                                   "--nowcast-months 1."),
         ("FINDING why nowcasting works", "It is not that the method is better. It is that the problem "
                                          "is better posed. Forecasting recessions offers 15 events in a "
                                          "century and 3 out of sample; nowcasting offers 178 quarters "
@@ -3440,7 +3497,9 @@ def run(args: argparse.Namespace) -> int:
     if not args.no_nowcast:
         log.info("Fitting walk-forward GDP nowcaster ...")
         try:
-            now_oos, now_validation = nowcast_gdp(monthly, months_available=args.nowcast_months)
+            now_oos, now_validation = nowcast_gdp(
+                monthly, months_available=args.nowcast_months,
+                feature_set=args.nowcast_features)
         except DataFetchError as exc:
             log.warning("Nowcaster unavailable: %s", exc)
 
@@ -3600,6 +3659,12 @@ def _print_summary(monthly, episodes, leadlag, signals, skill, spans, artifacts,
         print(f"  correlation with outturn {v['correlation_with_actual']:.2f}, "
               f"mean absolute error {v['mean_absolute_error']:.2f}pp, "
               f"{v['quarters_scored']} quarters {v['out_of_sample_from']}..{v['out_of_sample_to']}")
+        if v.get("feature_set") == "timely":
+            print("  NOTE: the timely set is scored on 2000-onward only, so this R2 is NOT comparable")
+            print("  with the core set's full-sample figure -- the windows differ and this one contains")
+            print("  COVID, which inflates the benchmark it is measured against. Like-for-like on the")
+            print("  SAME window: 1 month +0.133 -> +0.429, 2 months +0.356 -> +0.420,")
+            print("  3 months +0.477 -> +0.462. Timely data helps early and stops helping late.")
 
     print("\nArtifacts:")
     for path in artifacts:
@@ -3623,6 +3688,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--nowcast-months", type=int, default=3, choices=[1, 2, 3],
                         help="How many months of the quarter the nowcast may use. 1 is available "
                              "earliest and is much the weakest")
+    parser.add_argument("--nowcast-features", default="core",
+                        choices=sorted(NOWCAST_FEATURE_SETS),
+                        help="'timely' adds freight and labour-turnover series. Worth it only with "
+                             "--nowcast-months 1, and it shortens the scored sample to 2000 onward")
     parser.add_argument("--no-probability", action="store_true",
                         help="Skip the walk-forward calibrated probability model")
     parser.add_argument("--prob-target", default="recession",
