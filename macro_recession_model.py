@@ -712,6 +712,17 @@ def add_derived_metrics(monthly: pd.DataFrame) -> pd.DataFrame:
         # recession rather than the approach of the next one. Widening is the
         # part that carries information.
         df["credit_spread_chg12"] = df["credit_spread"].diff(12)
+    if "ust_10y" in df.columns:
+        # Large moves in the long yield, as distinct from the curve's shape. A
+        # violent bond selloff and a violent bond rally are different events
+        # with different causes -- one is an inflation or supply scare, the
+        # other a flight to safety -- so they are measured separately rather
+        # than as an absolute move. The 3-month change is the shortest window
+        # that survives monthly averaging; 6- and 12-month changes are kept
+        # because the thresholds that matter scale with the window.
+        df["ust_10y_chg3"] = df["ust_10y"].diff(3)
+        df["ust_10y_chg6"] = df["ust_10y"].diff(6)
+        df["ust_10y_chg12"] = df["ust_10y"].diff(12)
     if "permits" in df.columns:
         # Residential building permits: housing turns before the wider economy.
         df["permits_yoy"] = df["permits"].pct_change(12) * 100.0
@@ -1060,6 +1071,36 @@ SIGNAL_DEFS: list[dict] = [
                 "recessions. The level scores 0.35x -- spreads stay wide through recoveries -- "
                 "so the 12-month change is used instead. Even so it is only marginally "
                 "informative here.",
+    },
+    {
+        "name": "Bond selloff (10y +1pp in 3 months)",
+        "short": "Bond selloff",
+        "column": "ust_10y_chg3",
+        "kind": "leading",
+        "condition": "> +1.0 pp in 3m",
+        "fires": lambda v: v > 1.0,
+        "note": "A violent rise in the long yield. Scores a 2.66x leading lift, which looks "
+                "respectable until the episode count is read: 2 of 7 distinct firing episodes, "
+                "and the ex-recovery lift falls to 1.34x. Widening the window does not rescue it "
+                "-- +1.5pp in 6m gives 3.18x on 2 of 6 episodes with an ex-recovery lift of "
+                "0.65x, and +2pp in 12m gives 2.43x on 1 of 5 with 0.00x ex-recovery. That "
+                "pattern (high lift, few episodes, ex-recovery collapse) is the signature of a "
+                "signal scoring on the rate spikes that trail recessions rather than lead them. "
+                "It is listed as leading because the raw lift is real, and marked here so that "
+                "it is not acted on as though it were the curve.",
+    },
+    {
+        "name": "Bond rally (10y -0.75pp in 3 months)",
+        "short": "Bond rally",
+        "column": "ust_10y_chg3",
+        "kind": "coincident",
+        "condition": "< -0.75 pp in 3m",
+        "fires": lambda v: v < -0.75,
+        "note": "The mirror image, and unambiguous: 3.01x coincident against a 0.18x leading "
+                "lift on 1 of 14 episodes -- the most strongly anti-predictive signal in this "
+                "registry. Yields collapse because the recession is already underway and the "
+                "Fed is cutting into it. A flight to safety is a report on conditions, not a "
+                "forecast of them.",
     },
     {
         "name": "Building permits YoY",
@@ -1560,6 +1601,7 @@ SIGNAL_SOURCE_LEVELS = {
     "yield_curve": ("ust_10y", "ust_3m"),
     "curve_uninverting": ("ust_10y", "ust_3m"),
     "credit_spread_chg12": ("baa", "ust_10y"),
+    "ust_10y_chg3": ("ust_10y",),
     "permits_yoy": ("permits",),
     "claims_yoy": ("claims",),
     "continued_claims_yoy": ("continued_claims",),
@@ -1714,7 +1756,7 @@ def evaluate_signal_skill(
                 "max_possible_lift": _r(1 / (base / 100) if base else np.nan),
                 "episodes": episodes,
                 "episodes_followed_by_recession": hits,
-                "verdict": _verdict(lift),
+                "verdict": _verdict(lift, lift_ex, episodes, hits),
                 "note": spec["note"],
             }
         )
@@ -1746,14 +1788,41 @@ def _count_episodes(fired: pd.Series, target: pd.Series, gap_days: int = 200) ->
     return len(episodes), hits
 
 
-def _verdict(lift: float) -> str:
-    """Plain-language reading of a lift ratio, so the table cannot be skimmed
-    into the wrong conclusion."""
-    if lift is None or (isinstance(lift, float) and np.isnan(lift)):
+def _verdict(lift: float, lift_ex: float = np.nan,
+             episodes: int = 0, hits: int = 0) -> str:
+    """Plain-language reading of a signal's record, so the table cannot be
+    skimmed into the wrong conclusion.
+
+    Lift alone is not enough, and the bond-selloff row is why. It scores 2.67x
+    -- comfortably "strong" on a lift threshold -- off two firing episodes out
+    of seven, with its ex-recovery lift falling to 1.34x. A high ratio computed
+    over a handful of events is a small-sample artefact wearing the costume of
+    a signal, so the verdict is downgraded when the episode record does not
+    support it.
+    """
+    def _nan(v):
+        return v is None or (isinstance(v, float) and np.isnan(v))
+
+    if _nan(lift):
         return "not enough data"
+
+    # A signal must hit on a majority of its distinct firing episodes AND keep
+    # most of its lift once the year after each recession is excluded, or the
+    # ratio is not describing a repeatable relationship.
+    thin = episodes and hits / episodes < 0.5
+    fades = (not _nan(lift_ex)) and lift_ex < max(1.3, 0.6 * lift)
+
     if lift >= 2.0:
+        if thin and fades:
+            return f"high lift, thin record ({hits}/{episodes} episodes)"
+        if thin:
+            return f"leading, but only {hits} of {episodes} episodes"
+        if fades:
+            return "leading; most of the lift is post-recession"
         return "strong leading signal"
     if lift >= 1.3:
+        if thin and fades:
+            return f"weak, thin record ({hits}/{episodes} episodes)"
         return "some leading information"
     if lift >= 0.9:
         return "no leading information"
@@ -1903,6 +1972,18 @@ PROBABILITY_FEATURE_SETS = {
     # features answering "is a downturn coming" outvote the two that answer
     # "should policy be tighter".
     "policy": ("policy_guidance", "taylor_gap", "inflation_gap", "unemployment_gap"),
+    # Two features, both priced by the bond market. Used by default for the
+    # equity drawdown target, where the six-feature macro set is not merely
+    # unhelpful but destructive: it scores -0.604 skill at AUC 0.272 -- worse
+    # than a coin -- against +0.037 at AUC 0.534 here. Dropping four features
+    # is worth 0.64 of skill. On a target with a low base rate and a short
+    # usable sample, each extra coefficient costs more than the channel it adds
+    # is worth. Read the +0.037 for what it is: barely above the base rate,
+    # with a reliability curve that is not monotone (the 23.7% bucket is
+    # followed by a 1.6% hit rate) and nearly all of the gain coming from the
+    # top bucket alone. It is the least bad configuration on this target, not
+    # a usable equity model.
+    "curve": ("yield_curve", "credit_spread_chg12"),
 }
 
 #: Feature set each target uses unless --prob-features overrides it.
@@ -1915,6 +1996,7 @@ PROBABILITY_FEATURE_SETS = {
 #: institution, same decision variable, opposite information requirements.
 TARGET_DEFAULT_FEATURES = {
     "fed_hike": "policy",
+    "equity_drawdown": "curve",
 }
 
 #: Strong L2 shrinkage. With a few hundred rows and a handful of positive
@@ -2083,9 +2165,13 @@ def recession_probability(
         feature_set = TARGET_DEFAULT_FEATURES.get(target, "default")
     features = PROBABILITY_FEATURE_SETS.get(feature_set, PROBABILITY_FEATURES)
     available = [f for f in features if f in df.columns]
-    if len(available) < 3:
+    # A feature set is allowed to be small on purpose -- "curve" is two
+    # features because two beat six on that target -- so the floor is "most of
+    # what this set asked for", not a fixed count.
+    minimum = min(3, len(features))
+    if len(available) < minimum:
         raise DataFetchError(
-            f"probability model needs at least 3 of {features}, have {available}"
+            f"probability model needs at least {minimum} of {features}, have {available}"
         )
     if len(available) < len(features):
         log.warning("Probability model running on %d of %d features: %s",
@@ -2813,8 +2899,16 @@ def chart3_signal_skill(df, skill: pd.DataFrame, spans, outpath: Path, dpi: int,
     which is the honest headline and the reason this panel exists rather than a
     prettier restatement of chart 1.
     """
+    # Panel B has one row per scored indicator and the registry keeps growing,
+    # so the figure height is derived from the row count rather than fixed. At
+    # 45 rows a fixed 9.6in canvas overlapped every y-tick label into an
+    # unreadable smear; the constant below is the per-row height that keeps
+    # them apart at the label size chosen further down.
+    n_rows = int(skill["lift"].notna().sum()) if "lift" in skill.columns else 0
+    fig_height = max(9.6, 2.6 + 0.21 * n_rows)
     fig, (ax_a, ax_b) = plt.subplots(
-        1, 2, figsize=(16, 9.6), gridspec_kw={"width_ratios": [1.0, 1.0], "wspace": 0.30}
+        1, 2, figsize=(16.5, fig_height),
+        gridspec_kw={"width_ratios": [1.0, 1.08], "wspace": 0.30},
     )
     fig.patch.set_facecolor(SURFACE)
 
@@ -2864,10 +2958,13 @@ def chart3_signal_skill(df, skill: pd.DataFrame, spans, outpath: Path, dpi: int,
                   textcoords="offset points", fontsize=9, color=INK_SECONDARY, va="center")
 
     ax_b.set_yticks(y)
-    # Kind on its own line: with sixteen bars the single-line form runs wide
-    # enough to collide with panel A no matter how the gutter is sized.
-    ax_b.set_yticklabels([f"{n}\n({k})" for n, k in zip(bars["short"], bars["kind"])],
-                         fontsize=9.0, linespacing=1.25)
+    # Kind rides on the same line as the name. It used to sit on a second line,
+    # which reads better but costs twice the vertical space -- affordable at
+    # sixteen bars, impossible at forty-five. The gutter was widened and the
+    # label size steps down instead.
+    label_size = 9.0 if len(bars) <= 26 else 8.0
+    ax_b.set_yticklabels([f"{n}  ({k})" for n, k in zip(bars["short"], bars["kind"])],
+                         fontsize=label_size)
     ax_b.tick_params(axis="y", labelcolor=INK_SECONDARY)
     ax_b.set_xlim(0, max(4.2, float(bars["lift"].max()) * 1.55))
     ax_b.set_xlabel(f"Lift: precision ÷ base rate, for a recession starting within {horizon} months\n"
@@ -3420,6 +3517,7 @@ def build_readme(provenance: pd.DataFrame, splice_note: str, spx_source: str, wi
                                  "by design; valid for historical study, never as a model feature."),
         ("COLUMN recession", "USREC: 1 during an NBER-dated contraction, 0 otherwise."),
         ("COLUMN yield_curve", "10-year minus 3-month Treasury yield, pp. Negative = inverted."),
+        ("COLUMN ust_10y_chg3", "Change in the 10-year Treasury yield over 3 months, pp. Positive = selloff, negative = rally. chg6 and chg12 are the same over 6 and 12 months."),
         ("COLUMN credit_spread", "Moody's Baa corporate yield minus the 10-year Treasury, pp."),
         ("COLUMN credit_spread_chg12", "12-month change in that spread. The level is regime-dependent "
                                        "and stays wide through recoveries; the change is the signal."),
@@ -3485,6 +3583,39 @@ def build_readme(provenance: pd.DataFrame, splice_note: str, spx_source: str, wi
                                       "the thing being predicted rather than the predictor -- chart 2 "
                                       "asks what the market DID after a squeezed consumer, not what it "
                                       "foretold."),
+        ("FINDING large bond moves", "The SHAPE of the curve carries information; the SIZE of the "
+                                     "move in the long yield does not. A 10-year selloff of more than "
+                                     "1pp in 3 months scores a 2.66x leading lift, and the wider "
+                                     "windows score higher still (3.18x at +1.5pp/6m, 2.43x at "
+                                     "+2pp/12m) -- but on 2 of 7, 2 of 6 and 1 of 5 distinct firing "
+                                     "episodes, with ex-recovery lift falling to 1.34x, 0.65x and "
+                                     "0.00x. High lift, few episodes, ex-recovery collapse: the "
+                                     "signature of scoring on the rate spikes that TRAIL recessions. "
+                                     "The mirror case is cleaner. A bond RALLY of more than 0.75pp in "
+                                     "3 months is 3.01x coincident and 0.18x leading on 1 of 14 "
+                                     "episodes -- the most anti-predictive row in the registry. "
+                                     "Yields collapse because the recession is under way and the Fed "
+                                     "is cutting into it; a flight to safety reports conditions "
+                                     "rather than forecasting them. For contrast the curve, built "
+                                     "from the same 10-year yield, scores 3.43x on 7 of 9 episodes "
+                                     "with 2.83x ex-recovery. Same series, different question."),
+        ("FINDING feature count", "Correcting an earlier overstatement in this file's own history: "
+                                  "the claim that this model 'should not be pointed at equities' was "
+                                  "drawn from the six-feature macro set, which scores -0.604 skill at "
+                                  "AUC 0.272 on 20%+ drawdowns. That indicts the feature set, not the "
+                                  "inputs. Cut to the two bond-market features (curve level plus "
+                                  "credit spread widening) the same machinery on the same target "
+                                  "scores +0.037 at AUC 0.534, and the curve ALONE reaches AUC 0.607. "
+                                  "Four extra features are worth -0.64 of skill and -0.26 of AUC. On a "
+                                  "low-base-rate target with a short usable sample each coefficient "
+                                  "costs more than its channel adds, and the regression does not "
+                                  "merely fail to use the weak features -- it lets them outvote the "
+                                  "good one. This is why 'curve' is the default set for "
+                                  "equity_drawdown. It is still not a usable equity model: +0.037 is "
+                                  "barely above the base rate, the reliability curve is not monotone "
+                                  "(the 23.7% bucket is followed by a 1.6% hit rate), and nearly all "
+                                  "the gain sits in the top bucket. The finding is about model size, "
+                                  "not about a tradable edge."),
         ("FINDING what changed", "The yield curve keeps its LIFT across the break (3.28x to 3.08x) while "
                                  "its absolute reliability collapses (82.1% to 31.8% precision). Both are "
                                  "true: relative to a base rate that fell from 25% to 10% it is as "
@@ -3513,6 +3644,19 @@ def build_readme(provenance: pd.DataFrame, splice_note: str, spx_source: str, wi
                              "one independent test. Where lift and the episode ratio disagree, believe "
                              "the episode ratio: the policy composite outranks the yield curve on lift "
                              "(3.65x vs 3.43x) while hitting 3 of 6 episodes against the curve's 7 of 9."),
+        ("READING the verdict", "The verdict column now reads the episode record, not the lift alone. "
+                                "A lift above 2.0x is called a 'strong leading signal' only if the "
+                                "signal hit a majority of its distinct firing episodes AND kept most "
+                                "of its lift once the year after each recession is excluded; "
+                                "otherwise it is labelled with its actual episode count or flagged as "
+                                "post-recession lift. This demotes eight rows that the old "
+                                "lift-only rule called strong -- among them loan delinquencies (2.79x, "
+                                "3/7), lending standards (2.64x, 2/7) and building permits (2.62x, "
+                                "7/19). Five rows survive: the policy composite, the yield curve, the "
+                                "German curve, financial conditions and the curve un-inverting. The "
+                                "bond-selloff row is what forced the change -- 2.67x off two episodes "
+                                "with the ex-recovery lift halving is a small-sample artefact, and the "
+                                "old rule would have printed 'strong leading signal' beside it."),
         ("FINDING central bank", "Fed tightening (>2pp in 12m) scores 2.73x and financial conditions "
                                  "(NFCI > 0) 2.76x. Neither is redundant with the yield curve: NFCI "
                                  "co-fires with it at only phi +0.16, and restricted to months when the "
@@ -3927,8 +4071,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--prob-target", default="recession",
                         choices=sorted(PROBABILITY_TARGETS),
                         help="Which event to model. 'fed_cut' is measurably the most predictable of "
-                             "these from the same features; 'equity_drawdown' is the least, and is "
-                             "predicted WORSE than chance")
+                             "these from the same features; 'equity_drawdown' is much the weakest, "
+                             "and is predicted worse than chance by the six-feature macro set")
     parser.add_argument("--prob-features", default="auto",
                         choices=["auto", *sorted(PROBABILITY_FEATURE_SETS)],
                         help="Feature set for the probability model. 'auto' picks the policy "
