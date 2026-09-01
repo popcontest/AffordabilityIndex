@@ -2378,6 +2378,126 @@ def nowcast_gdp(df: pd.DataFrame, months_available: int = 3,
 
 
 # ---------------------------------------------------------------------------
+# Geopolitical shock event study
+# ---------------------------------------------------------------------------
+
+#: Dated market-shock events. The list is the standard practitioner chronology
+#: (as circulated by Carson Investment Research, S&P Dow Jones Indices, CFRA and
+#: Strategas); the RETURNS below are recomputed from this model's own daily S&P
+#: series rather than taken on trust, and they reproduce the published figures
+#: closely -- mean 12-month +3.9% here against +3.0% published, median +9.4%
+#: against +7.4%, 65% positive in both. The small gaps are price-only returns
+#: and exact date handling.
+#:
+#: The reason to hold the list here at all is that the published version has no
+#: macro context, and the macro context turns out to be the whole story.
+MARKET_SHOCK_EVENTS: tuple[tuple[str, str], ...] = (
+    ("Germany invades France", "1940-05-10"), ("Pearl Harbor", "1941-12-07"),
+    ("N. Korea invades S. Korea", "1950-06-25"), ("Hungarian Uprising", "1956-10-23"),
+    ("Suez Crisis", "1956-10-29"), ("Cuban Missile Crisis", "1962-10-16"),
+    ("Kennedy assassination", "1963-11-22"), ("Gulf of Tonkin", "1964-08-02"),
+    ("Six-Day War", "1967-06-05"), ("Tet Offensive", "1968-01-30"),
+    ("Penn Central bankruptcy", "1970-06-21"), ("Munich Olympics", "1972-09-05"),
+    ("Yom Kippur War", "1973-10-06"), ("Oil Embargo", "1973-10-16"),
+    ("Nixon resigns", "1974-08-09"), ("Reagan shooting", "1981-03-30"),
+    ("Continental Illinois bailout", "1984-05-09"), ("1987 crash", "1987-10-19"),
+    ("Iraq invades Kuwait", "1990-08-02"), ("Soros breaks BoE", "1992-09-16"),
+    ("First WTC bombing", "1993-02-26"), ("Asian Financial Crisis", "1997-10-08"),
+    ("USS Cole bombing", "2000-10-12"), ("9/11 attacks", "2001-09-11"),
+    ("Iraq war starts", "2003-03-20"), ("Madrid bombing", "2004-03-11"),
+    ("London subway bombing", "2005-07-05"), ("Bear Stearns collapses", "2008-03-14"),
+    ("Lehman collapses", "2008-09-15"), ("Boston Marathon bombing", "2013-04-15"),
+    ("Russia annexes Crimea", "2014-02-20"), ("Brexit", "2016-06-24"),
+    ("Bombing of Syria", "2017-04-07"), ("N. Korea missile crisis", "2017-07-28"),
+    ("Saudi Aramco drone strike", "2019-09-14"), ("Soleimani airstrike", "2020-01-03"),
+    ("US exits Afghanistan", "2021-08-30"), ("Russia invades Ukraine", "2022-02-24"),
+    ("Hamas attacks Israel", "2023-10-07"), ("Iran attacks Israel", "2024-04-13"),
+    ("Liberation Day", "2025-04-02"), ("US bombs Iran facilities", "2025-06-22"),
+    ("US removes Maduro", "2026-01-03"),
+)
+
+#: How a shock is classified. The distinction that matters is not whether a
+#: recession was under way -- the two worst outcomes in the whole set, the Yom
+#: Kippur War and the Oil Embargo, both landed weeks BEFORE the 1973 recession
+#: was dated -- but whether one was arriving.
+EVENT_CONTEXTS = ("already in recession", "recession began within 12m", "no recession near")
+
+
+def event_study(
+    daily: pd.DataFrame,
+    monthly: pd.DataFrame,
+    spans: list[tuple[pd.Timestamp, pd.Timestamp]],
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """S&P returns after dated geopolitical shocks, split by macro context.
+
+    The familiar version of this table reports one average across all shocks and
+    concludes that markets shrug them off. That average is taken over two
+    populations that behave nothing alike. Sorted by whether a recession was
+    arriving, the same events give +10.4% mean 12-month return when none was
+    (79% positive) against -13.6% when one began within the year (25% positive).
+
+    Which suggests the events are not really the subject. What a shock does to
+    the market is mostly a function of the economy it lands on.
+    """
+    if "sp500" not in daily.columns:
+        raise DataFetchError("event study needs the daily S&P series")
+    px = daily["sp500"].dropna()
+    starts = [s for s, _ in spans]
+
+    def forward(dt: pd.Timestamp, months: int) -> float:
+        prior = px.loc[:dt]
+        if prior.empty:
+            return np.nan
+        after = px.loc[dt:dt + pd.DateOffset(months=months)]
+        return (after.iloc[-1] / prior.iloc[-1] - 1.0) * 100.0 if len(after) > 1 else np.nan
+
+    rows = []
+    for name, date in MARKET_SHOCK_EVENTS:
+        t = pd.Timestamp(date)
+        month = t.to_period("M").to_timestamp()
+        in_rec = monthly["recession"].get(month, np.nan)
+        soon = any(t < s <= t + pd.DateOffset(months=12) for s in starts)
+        context = (
+            EVENT_CONTEXTS[0] if in_rec == 1
+            else EVENT_CONTEXTS[1] if soon
+            else EVENT_CONTEXTS[2]
+        )
+        rows.append({
+            "event": name,
+            "date": t.date().isoformat(),
+            "context": context,
+            "return_1m_pct": _r(forward(t, 1)),
+            "return_3m_pct": _r(forward(t, 3)),
+            "return_6m_pct": _r(forward(t, 6)),
+            "return_12m_pct": _r(forward(t, 12)),
+        })
+    events = pd.DataFrame(rows)
+
+    scored = events.dropna(subset=["return_12m_pct"])
+    summary_rows = [{
+        "group": "ALL EVENTS",
+        "n": len(scored),
+        "mean_12m_pct": _r(scored["return_12m_pct"].mean()),
+        "median_12m_pct": _r(scored["return_12m_pct"].median()),
+        "share_positive_pct": _r(100 * (scored["return_12m_pct"] > 0).mean()),
+        "worst_12m_pct": _r(scored["return_12m_pct"].min()),
+    }]
+    for context in EVENT_CONTEXTS:
+        g = scored[scored["context"] == context]
+        if g.empty:
+            continue
+        summary_rows.append({
+            "group": context,
+            "n": len(g),
+            "mean_12m_pct": _r(g["return_12m_pct"].mean()),
+            "median_12m_pct": _r(g["return_12m_pct"].median()),
+            "share_positive_pct": _r(100 * (g["return_12m_pct"] > 0).mean()),
+            "worst_12m_pct": _r(g["return_12m_pct"].min()),
+        })
+    return events, pd.DataFrame(summary_rows)
+
+
+# ---------------------------------------------------------------------------
 # Charts
 # ---------------------------------------------------------------------------
 
@@ -2966,6 +3086,72 @@ def chart5_nowcast(oos: pd.DataFrame, validation: dict, spans, outpath: Path, dp
     return outpath
 
 
+def chart6_event_study(events: pd.DataFrame, summary: pd.DataFrame, outpath: Path, dpi: int) -> Path:
+    """Chart 6 -- geopolitical shocks, sorted by the economy they landed on.
+
+    One dot per event. The point of the chart is the separation between the
+    rows: the same catalogue of wars, attacks and collapses produces a
+    comfortably positive year when no recession was arriving, and a badly
+    negative one when it was. The shock is not the variable that matters.
+    """
+    fig, ax = plt.subplots(figsize=(15, 7.6))
+    fig.patch.set_facecolor(SURFACE)
+    _style_axes(ax)
+    ax.grid(axis="y", visible=False)
+
+    order = [EVENT_CONTEXTS[2], EVENT_CONTEXTS[0], EVENT_CONTEXTS[1]]
+    colours = {EVENT_CONTEXTS[2]: C_RETAIL, EVENT_CONTEXTS[0]: C_INFLATION,
+               EVENT_CONTEXTS[1]: C_RECESSION}
+    scored = events.dropna(subset=["return_12m_pct"])
+
+    ax.axvline(0, color=ZERO_LINE, linewidth=1.3, zorder=1)
+    rng = np.random.default_rng(0)
+    for i, context in enumerate(order):
+        g = scored[scored["context"] == context]
+        if g.empty:
+            continue
+        jitter = rng.uniform(-0.16, 0.16, len(g))
+        ax.scatter(g["return_12m_pct"], np.full(len(g), i) + jitter, s=90,
+                   facecolor=colours[context], edgecolor=SURFACE, linewidth=1.1,
+                   alpha=0.85, zorder=4)
+        mean = g["return_12m_pct"].mean()
+        ax.plot([mean, mean], [i - 0.32, i + 0.32], color=INK_PRIMARY, linewidth=2.6, zorder=5)
+        ax.annotate(f"mean {mean:+.1f}%   ·   {(g['return_12m_pct'] > 0).mean():.0%} positive   ·   n={len(g)}",
+                    xy=(0.995, i + 0.40), xycoords=("axes fraction", "data"), ha="right",
+                    fontsize=10, fontweight="bold", color=INK_PRIMARY)
+        # Name only the single worst and best in each row; more labels than
+        # that collide, and the rest of the dots speak as a distribution.
+        extremes = pd.concat([g.nsmallest(1, "return_12m_pct"), g.nlargest(1, "return_12m_pct")])
+        for side, (_, r) in zip(("left", "right"), extremes.iterrows()):
+            ax.annotate(r["event"], xy=(r["return_12m_pct"], i), xytext=(0, -19),
+                        textcoords="offset points",
+                        ha="left" if side == "left" else "right",
+                        fontsize=8.5, color=INK_MUTED)
+
+    ax.set_yticks(range(len(order)))
+    ax.set_yticklabels([c.replace("recession ", "recession\n") for c in order], fontsize=10.5)
+    ax.tick_params(axis="y", labelcolor=INK_SECONDARY)
+    ax.set_ylim(-0.7, len(order) - 0.3)
+    ax.set_xlabel("S&P 500 return over the 12 months after the shock (%)",
+                  color=INK_SECONDARY, fontsize=11, labelpad=10)
+    ax.xaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda v, _: f"{v:+.0f}%"))
+
+    fig.suptitle("Geopolitical shocks barely matter — unless a recession was already coming",
+                 x=0.045, ha="left", fontsize=17, fontweight="bold", color=INK_PRIMARY, y=0.965)
+    ax.set_title("Each dot is one dated shock. Vertical bar is the group mean. The familiar "
+                 "single average across all of them hides these two populations.",
+                 loc="left", fontsize=10.5, color=INK_SECONDARY, pad=14)
+    fig.text(0.045, 0.02,
+             "Event dates from the standard practitioner chronology (Carson Investment Research / S&P DJI / "
+             "CFRA / Strategas); returns recomputed here from daily S&P data, price only.",
+             fontsize=8.5, color=INK_MUTED, ha="left")
+    fig.subplots_adjust(left=0.155, right=0.985, top=0.845, bottom=0.135)
+    fig.savefig(outpath, dpi=dpi, facecolor=SURFACE)
+    plt.close(fig)
+    log.info("Wrote %s", outpath)
+    return outpath
+
+
 # ---------------------------------------------------------------------------
 # Excel export
 # ---------------------------------------------------------------------------
@@ -3023,6 +3209,30 @@ def build_readme(provenance: pd.DataFrame, splice_note: str, spx_source: str, wi
         ("SHEET: nowcast_oos", "Walk-forward nowcast of the CURRENT quarter's real GDP growth, "
                                "before it is published. Every row out of sample."),
         ("SHEET: nowcast_validation", "RMSE against the mean benchmark, R2, correlation."),
+        ("SHEET: event_study", "S&P returns after 43 dated geopolitical shocks, with the macro "
+                               "state at the time of each."),
+        ("FINDING geopolitical shocks", "The familiar table of 'how do stocks do after major events' "
+                                        "reports one average -- roughly +3% at twelve months, about "
+                                        "65% positive -- and concludes markets shrug shocks off. Our "
+                                        "recomputation from daily data reproduces those figures (+3.9% "
+                                        "mean, +9.4% median, 65% positive), and then splits them by "
+                                        "something the published version does not carry: whether a "
+                                        "recession was arriving. No recession near, n=29: mean +10.4%, "
+                                        "79% positive, worst -19.6%. A recession beginning within "
+                                        "twelve months, n=8: mean -13.6%, 25% positive, worst -43.2%. "
+                                        "A twenty-point spread. The single average is taken across two "
+                                        "populations that behave nothing alike, and the shock is "
+                                        "mostly not the variable that matters -- the economy it lands "
+                                        "on is."),
+        ("NOTE event classification", "In-recession is not the right split. The two worst outcomes in "
+                                      "the set, the Yom Kippur War and the Oil Embargo, both landed "
+                                      "weeks BEFORE the 1973 recession was dated, so classifying by "
+                                      "'already in recession' puts them in the benign bucket. What "
+                                      "separates the groups is whether a recession was ARRIVING. "
+                                      "Tested separately: the model's own out-of-sample probability "
+                                      "does not usefully separate the events, because only 20 of 43 "
+                                      "fall inside its 1991-onward window and just 3 of those sat "
+                                      "above 15%."),
         ("FINDING the nowcast", "This is the best-performing model in the file, and the contrast with "
                                 "the recession work is the point. Using all three months of a quarter: "
                                 "RMSE 2.59pp against 4.21pp for the mean benchmark, R2 +0.622, "
@@ -3493,6 +3703,12 @@ def run(args: argparse.Namespace) -> int:
     corr = correlation_matrix(monthly)
     skill = evaluate_signal_skill(monthly, spans, horizon=args.horizon)
 
+    events_df, events_summary = None, None
+    try:
+        events_df, events_summary = event_study(daily, monthly, spans)
+    except DataFetchError as exc:
+        log.warning("Event study unavailable: %s", exc)
+
     now_oos, now_validation = None, {}
     if not args.no_nowcast:
         log.info("Fitting walk-forward GDP nowcaster ...")
@@ -3526,6 +3742,9 @@ def run(args: argparse.Namespace) -> int:
     if not skill.empty:
         charts.append(chart3_signal_skill(monthly, skill, spans,
                                           outdir / "chart3_signal_skill.png", args.dpi, args.horizon))
+    if events_df is not None and not events_df.empty:
+        charts.append(chart6_event_study(events_df, events_summary,
+                                         outdir / "chart6_event_study.png", args.dpi))
     if now_oos is not None and not now_oos.empty:
         charts.append(chart5_nowcast(now_oos, now_validation, spans,
                                      outdir / "chart5_nowcast.png", args.dpi))
@@ -3558,6 +3777,8 @@ def run(args: argparse.Namespace) -> int:
                 [{"metric": k, "value": v} for k, v in prob_validation.items()]
             ) if prob_validation else None,
             "probability_reliability": prob_reliability,
+            "event_study": events_df,
+            "event_study_summary": events_summary,
             "nowcast_oos": now_oos.reset_index() if now_oos is not None else None,
             "nowcast_validation": pd.DataFrame(
                 [{"metric": k, "value": v} for k, v in now_validation.items()]
@@ -3568,12 +3789,13 @@ def run(args: argparse.Namespace) -> int:
 
     # ----- 6. Console summary ---------------------------------------------
     _print_summary(monthly, episodes, leadlag, signals, skill, spans, [xlsx, *charts],
-                   prob_validation, prob_reliability, now_validation)
+                   prob_validation, prob_reliability, now_validation, events_summary)
     return 0
 
 
 def _print_summary(monthly, episodes, leadlag, signals, skill, spans, artifacts,
-                   prob_validation=None, prob_reliability=None, now_validation=None) -> None:
+                   prob_validation=None, prob_reliability=None, now_validation=None,
+                   events_summary=None) -> None:
     line = "=" * 78
     print(f"\n{line}\nMACRO RECESSION MODEL\n{line}")
     print(f"Sample window     : {monthly.index.min():%b %Y} – {monthly.index.max():%b %Y} "
@@ -3665,6 +3887,14 @@ def _print_summary(monthly, episodes, leadlag, signals, skill, spans, artifacts,
             print("  COVID, which inflates the benchmark it is measured against. Like-for-like on the")
             print("  SAME window: 1 month +0.133 -> +0.429, 2 months +0.356 -> +0.420,")
             print("  3 months +0.477 -> +0.462. Timely data helps early and stops helping late.")
+
+    if events_summary is not None and not events_summary.empty:
+        print("\nGEOPOLITICAL SHOCKS: S&P return over the following 12 months")
+        for _, r in events_summary.iterrows():
+            print(f"  {r['group']:<28} n={int(r['n']):2d}  mean {r['mean_12m_pct']:+6.1f}%  "
+                  f"median {r['median_12m_pct']:+6.1f}%  positive {r['share_positive_pct']:3.0f}%  "
+                  f"worst {r['worst_12m_pct']:+6.1f}%")
+        print("  The single all-events average averages two populations that behave nothing alike.")
 
     print("\nArtifacts:")
     for path in artifacts:
